@@ -1,0 +1,21 @@
+.build/
+.DS_Store
+*.xcuserstate
+# Xcode and SwiftPM local state
+.swiftpm/
+xcuserdata/
+*.xcodeproj/xcuserdata/
+DerivedData/
+# Local editor settings
+.vscode/
+.idea/
+# Build artifacts and packaged releases
+dist/
+*.app/
+*.dmg
+*.zip
+*.tar.gz
+# Local logs and temporary files
+*.log
+*.tmp
+*.swp
