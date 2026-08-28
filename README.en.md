@@ -14,7 +14,16 @@
 
 <p align="center">
   <a href="https://github.com/yarxhe/Hooky-bar/actions/workflows/ci.yml">
-    <img src="https://github.com/yarxhe/Hooky-bar/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI">
+    <img src="https://img.shields.io/github/actions/workflow/status/yarxhe/Hooky-bar/ci.yml?branch=master&style=flat-square&label=CI" alt="CI">
+  </a>
+  <a href="https://github.com/yarxhe/Hooky-bar/stargazers">
+    <img src="https://img.shields.io/github/stars/yarxhe/Hooky-bar?style=flat-square&logo=github&label=Stars" alt="GitHub Stars">
+  </a>
+  <a href="https://github.com/yarxhe/Hooky-bar/releases/latest">
+    <img src="https://img.shields.io/github/v/release/yarxhe/Hooky-bar?style=flat-square&label=Release" alt="Latest release">
+  </a>
+  <a href="https://github.com/yarxhe/Hooky-bar/releases">
+    <img src="https://img.shields.io/github/downloads/yarxhe/Hooky-bar/total?style=flat-square&label=Downloads" alt="Release downloads">
   </a>
 </p>
 
