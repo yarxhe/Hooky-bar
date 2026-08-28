@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>HookyBar</string>
+	<key>CFBundleDisplayName</key>
+	<string>Hooky bar</string>
+	<key>CFBundleIconFile</key>
+	<string>HookyBar.icns</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.yarxhe.HookyBar</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+	<string>Hooky bar</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.2.0</string>
+    <key>CFBundleVersion</key>
+    <string>2</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Hooky bar показывает анимацию при подключении Bluetooth-устройств.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Hooky bar напоминает о ближайших встречах из Apple Calendar.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Hooky bar управляет только выбранным музыкальным плеером и создаёт заметку по вашей команде.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Hooky bar читает папку со скриншотами, чтобы показать превью и добавить снимки в буфер.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Hooky bar отслеживает новые файлы в Загрузках только для уведомлений AirDrop.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+</dict>
+</plist>

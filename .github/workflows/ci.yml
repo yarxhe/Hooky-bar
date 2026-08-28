@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Tests and release build
+    # Liquid Glass is part of the macOS 26 SDK and cannot be parsed by the
+    # Xcode 16 toolchain that is the default on the macOS 15 runner.
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          swift --version
+          xcodebuild -version
+
+      - name: Run tests
+        run: ./Packaging/test.sh
+
+      - name: Build application
+        run: ./Packaging/build-app.sh "$RUNNER_TEMP/Hooky bar.app"
+
+      - name: Verify application signature
+        run: codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/Hooky bar.app"
+
+      - name: Prepare build artifact
+        if: github.event_name != 'pull_request'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$RUNNER_TEMP/Hooky bar.app" \
+            "$RUNNER_TEMP/Hooky-bar-macos.zip"
+
+      - name: Upload build artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Hooky-bar-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/Hooky-bar-macos.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,5 @@
+"NSBluetoothAlwaysUsageDescription" = "Hooky bar показывает анимацию при подключении Bluetooth-устройств.";
+"NSCalendarsFullAccessUsageDescription" = "Hooky bar напоминает о ближайших встречах из Apple Calendar.";
+"NSAppleEventsUsageDescription" = "Hooky bar управляет только выбранным музыкальным плеером и создаёт заметку по вашей команде.";
+"NSDesktopFolderUsageDescription" = "Hooky bar читает папку со скриншотами, чтобы показать превью и добавить снимки в буфер.";
+"NSDownloadsFolderUsageDescription" = "Hooky bar отслеживает новые файлы в Загрузках только для уведомлений AirDrop.";
