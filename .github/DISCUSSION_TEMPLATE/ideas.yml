@@ -1,0 +1,50 @@
+title: "[Idea] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this category to explore an idea with the community before creating a scoped feature request.
+
+        Здесь можно обсудить идею с сообществом до создания конкретного Feature request.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / Раздел
+      options:
+        - Music / Музыка
+        - Clipboard / Буфер
+        - Utilities / Утилиты
+        - Dev
+        - Notifications and system events / Уведомления и системные события
+        - Integrations and adapters / Интеграции и адаптеры
+        - Other / Другое
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity / Проблема или возможность
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea / Идея
+    validations:
+      required: true
+
+  - type: textarea
+    id: value
+    attributes:
+      label: Who would benefit? / Кому это будет полезно?
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References or mockups / Примеры или макеты
+

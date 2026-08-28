@@ -1,0 +1,64 @@
+name: Feature request / Предложить функцию
+description: Suggest an improvement for Hooky Bar / Предложить улучшение Hooky Bar
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem first, then the proposed solution. Early ideas and brainstorming are welcome in Discussions.
+
+        Сначала опишите проблему пользователя, а затем предлагаемое решение. Ранние идеи и обсуждения лучше начинать в Discussions.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting / Перед отправкой
+      options:
+        - label: I searched existing issues and discussions for similar proposals / Я проверил Issues и Discussions на похожие предложения
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area / Раздел продукта
+      options:
+        - Music / Музыка
+        - Clipboard / Буфер
+        - Utilities / Утилиты
+        - Dev
+        - Notifications and system events / Уведомления и системные события
+        - Settings and localization / Настройки и локализация
+        - UI and animations / Интерфейс и анимации
+        - Integrations and adapters / Интеграции и адаптеры
+        - Other / Другое
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Проблема
+      description: What is difficult or impossible today? / Что сейчас неудобно или невозможно сделать?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / Предлагаемое решение
+      description: Describe the desired behavior, not only its visual appearance / Опишите желаемое поведение, а не только внешний вид
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / Рассмотренные альтернативы
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context or mockups / Дополнительная информация или макеты
+

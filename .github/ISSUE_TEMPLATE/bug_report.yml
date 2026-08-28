@@ -1,0 +1,107 @@
+name: Bug report / Сообщить об ошибке
+description: Report a reproducible problem in Hooky Bar / Сообщить о воспроизводимой ошибке
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Hooky Bar. Please include enough detail to reproduce the problem.
+
+        Спасибо, что помогаете улучшать Hooky Bar. Опишите проблему так, чтобы её можно было воспроизвести.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting / Перед отправкой
+      options:
+        - label: I searched existing issues and did not find the same problem / Я проверил существующие Issues и не нашёл такую же проблему
+          required: true
+        - label: I am using the latest available Hooky Bar release / Я использую последний доступный релиз Hooky Bar
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Hooky Bar version / Версия Hooky Bar
+      placeholder: v0.2.0-beta.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: macos
+    attributes:
+      label: macOS version / Версия macOS
+      options:
+        - macOS 26 Tahoe
+        - macOS 15 Sequoia
+        - macOS 14 Sonoma
+        - Other / Другая
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area / Раздел
+      options:
+        - Music / Музыка
+        - Clipboard / Буфер
+        - Utilities / Утилиты
+        - Dev
+        - Notifications and system events / Уведомления и системные события
+        - Settings and localization / Настройки и локализация
+        - UI and animations / Интерфейс и анимации
+        - Installation and packaging / Установка и сборка
+        - Other / Другое
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened? / Что произошло?
+      description: Describe the problem and what you were doing when it appeared / Опишите проблему и что вы делали перед её появлением
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / Шаги воспроизведения
+      placeholder: |
+        1. Open...
+        2. Select...
+        3. See...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / Ожидаемое поведение
+    validations:
+      required: true
+
+  - type: dropdown
+    id: music-player
+    attributes:
+      label: Music player, if relevant / Музыкальный плеер, если относится к ошибке
+      options:
+        - Not applicable / Не относится
+        - Yandex Music / Яндекс Музыка
+        - Apple Music
+        - Spotify
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots, video, or logs / Скриншоты, видео или логи
+      description: Drag files here. Remove passwords, tokens, private clipboard content, and other sensitive data first / Перетащите файлы сюда. Предварительно удалите пароли, токены и другие личные данные
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context / Дополнительная информация
+

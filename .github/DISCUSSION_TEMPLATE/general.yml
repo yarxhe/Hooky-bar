@@ -1,0 +1,21 @@
+title: "[General] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use General for community topics that do not fit Q&A, Ideas, or Show and tell.
+
+        Используйте General для тем сообщества, которые не подходят для Q&A, Ideas или Show and tell.
+
+  - type: textarea
+    id: topic
+    attributes:
+      label: Topic / Тема
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Контекст
+

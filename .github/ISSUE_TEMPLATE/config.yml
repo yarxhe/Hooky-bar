@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and support / Вопросы и помощь
+    url: https://github.com/yarxhe/Hooky-bar/discussions/categories/q-a
+    about: Ask usage and troubleshooting questions in Discussions / Задавайте вопросы об использовании и настройке в Discussions
+  - name: Early ideas / Ранние идеи
+    url: https://github.com/yarxhe/Hooky-bar/discussions/categories/ideas
+    about: Discuss an idea before turning it into a scoped feature request / Обсудите идею перед созданием конкретного Feature request
+

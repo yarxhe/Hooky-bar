@@ -1,0 +1,51 @@
+title: "[Question] "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask a focused question and include enough context for the community to help.
+
+        Сформулируйте конкретный вопрос и добавьте контекст, необходимый для ответа.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / Раздел
+      options:
+        - Music / Музыка
+        - Clipboard / Буфер
+        - Utilities / Утилиты
+        - Dev
+        - Installation and permissions / Установка и разрешения
+        - Other / Другое
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question / Вопрос
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried? / Что вы уже пробовали?
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment / Окружение
+      placeholder: Hooky Bar v0.2.0-beta.1, macOS 26
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Existing answers / Готовые ответы
+      options:
+        - label: I searched the documentation and existing discussions / Я проверил документацию и существующие обсуждения
+          required: true
+

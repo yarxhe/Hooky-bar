@@ -1,0 +1,33 @@
+title: "[Showcase] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share how you use Hooky Bar, an integration you built, or a workflow that may help others.
+
+        Покажите, как вы используете Hooky Bar, какую интеграцию сделали или какой workflow может пригодиться другим.
+
+  - type: input
+    id: project
+    attributes:
+      label: Project or setup name / Название проекта или настройки
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What did you make? / Что вы сделали?
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots, video, or links / Скриншоты, видео или ссылки
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Setup details / Детали настройки
+
