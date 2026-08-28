@@ -16,6 +16,13 @@ let package = Package(
                 .product(name: "MediaRemoteAdapter", package: "mediaremote-adapter")
             ],
             resources: [.process("Resources")]
+        ),
+        .testTarget(
+            name: "HookyBarTests",
+            dependencies: [
+                "HookyBar",
+                .product(name: "MediaRemoteAdapter", package: "mediaremote-adapter")
+            ]
         )
     ]
 )
