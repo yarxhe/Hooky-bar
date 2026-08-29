@@ -120,40 +120,29 @@ struct HookyBarView: View {
         Group {
             if let event = features.currentEvent {
                 VStack(spacing: 0) {
-                    compactBarContent(event: event)
+                    compactBarContent(suppressIdleChrome: true)
 
-                    HStack(spacing: 10) {
-                        if hasCompactContent {
-                            systemEventBadge(event)
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(event.title)
-                                .font(.system(size: 11, weight: .semibold))
-                                .lineLimit(1)
-                            Text(event.subtitle)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.58))
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 13)
-                    .frame(width: compactSurfaceWidth, height: 40)
-                    .transition(.opacity)
+                    SystemEventBanner(event: event, width: compactSurfaceWidth)
+                        .id(event.id)
+                        .transition(
+                            .move(edge: .top)
+                                .combined(with: .opacity)
+                        )
                 }
             }
         }
-        .frame(width: compactSurfaceWidth, height: ui.notchHeight + 46, alignment: .top)
+        .frame(width: compactSurfaceWidth, height: ui.notchHeight + 52, alignment: .top)
     }
 
-    private func compactBarContent(event: HookySystemEvent? = nil) -> some View {
+    /// Во время системного события верхняя часть остаётся настоящим mini-player chrome.
+    /// Событие рисуется только в banner снизу и больше не дублируется в крыльях.
+    private func compactBarContent(suppressIdleChrome: Bool = false) -> some View {
         HStack(spacing: 0) {
             if !ui.hideLeftMusicWing {
                 Group {
                     if features.hasPomodoro {
                         PomodoroCompactTime(remaining: features.pomodoroRemaining)
-                    } else if store.compactPlaybackActive || event == nil {
+                    } else if store.compactPlaybackActive || !suppressIdleChrome {
                         Group {
                             if let artwork = store.nowPlaying.artwork {
                                 Image(nsImage: artwork).resizable().scaledToFill()
@@ -163,8 +152,8 @@ struct HookyBarView: View {
                         }
                         .frame(width: 24, height: 24)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                    } else if let event {
-                        systemEventBadge(event)
+                    } else {
+                        Color.clear
                     }
                 }
                 .frame(width: 56, height: ui.notchHeight)
@@ -179,16 +168,8 @@ struct HookyBarView: View {
                         .frame(width: 48, height: 19)
                 } else if features.hasPomodoro {
                     PomodoroCompactProgress(progress: features.pomodoroProgress, running: features.pomodoroRunning)
-                } else if let event {
-                    if ui.hideLeftMusicWing {
-                        systemEventBadge(event)
-                    } else {
-                        Text(event.kind == .vpn ? "VPN" : event.title)
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.62))
-                            .lineLimit(1)
-                            .padding(.horizontal, 5)
-                    }
+                } else if suppressIdleChrome {
+                    Color.clear
                 } else {
                     PomodoroCompactProgress(progress: features.pomodoroProgress, running: features.pomodoroRunning)
                 }
@@ -197,20 +178,6 @@ struct HookyBarView: View {
         }
         .frame(width: compactSurfaceWidth, height: ui.notchHeight)
         .background(Color.black)
-    }
-
-    private func systemEventBadge(_ event: HookySystemEvent) -> some View {
-        Image(systemName: event.symbol)
-            .font(.system(size: 14, weight: .semibold))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(eventIconColor(event))
-            .frame(width: 26, height: 26)
-            .background(eventIconColor(event).opacity(0.16), in: Circle())
-            .symbolEffect(.bounce, value: event.id)
-    }
-
-    private func eventIconColor(_ event: HookySystemEvent) -> Color {
-        Color(nsColor: event.tint)
     }
 
     private var screenshotSuccess: some View {

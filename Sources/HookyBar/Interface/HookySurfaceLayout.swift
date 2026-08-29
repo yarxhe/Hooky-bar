@@ -61,7 +61,7 @@ extension InterfaceModel {
             return HookySurfaceLayout(
                 mode: .systemEvent(systemEventID),
                 width: compactWidth,
-                height: notchHeight + 46,
+                height: notchHeight + 52,
                 horizontalOffset: hideLeftMusicWing ? 28 : 0,
                 bottomLeadingRadius: 18,
                 bottomTrailingRadius: 18

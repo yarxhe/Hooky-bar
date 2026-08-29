@@ -92,6 +92,22 @@ struct AdapterContractTests {
         #expect(adapter.stopCount == 1)
     }
 
+    @Test func systemEventLayoutExtendsBelowCompactChrome() {
+        let ui = InterfaceModel()
+        ui.notchWidth = 204
+        ui.notchHeight = 32
+        ui.hideLeftMusicWing = false
+        let eventID = UUID()
+
+        let layout = ui.surfaceLayout(hasCompactContent: false, systemEventID: eventID)
+
+        #expect(layout.mode == .systemEvent(eventID))
+        #expect(layout.width == 316)
+        #expect(layout.height == 84)
+        #expect(layout.bottomLeadingRadius == 18)
+        #expect(layout.bottomTrailingRadius == 18)
+    }
+
     @Test func yandexCDPOnlyAcceptsItsLoopbackPageSocket() throws {
         let port: UInt16 = 54_321
         let valid = try #require(URL(string: "ws://127.0.0.1:\(port)/devtools/page/player"))
