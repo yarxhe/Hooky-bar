@@ -17,6 +17,7 @@ struct DeveloperPane: View {
             .padding(.horizontal, 12)
         }
         .scrollIndicators(.hidden)
+        .scrollClipDisabled(false)
         .scrollBounceBehavior(.basedOnSize)
         .onAppear(perform: tools.refreshDeveloperWorkspace)
     }

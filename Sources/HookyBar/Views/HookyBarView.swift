@@ -177,40 +177,40 @@ struct HookyBarView: View {
     }
 
     private var expandedContent: some View {
-        HookyGlassContainer(spacing: 8) {
-            ZStack {
-                if ui.screenshotPreview == nil, ui.tab == 0 {
-                    LiquidEtherBackground(
-                        colors: store.visualizerColors,
-                        active: ui.expanded
-                    )
-                    .id(store.trackPresentationRevision)
-                    .transition(.opacity)
-                    .animation(HookyMotion.backgroundPalette, value: store.trackPresentationRevision)
-                }
+        ZStack {
+            if ui.screenshotPreview == nil, ui.tab == 0 {
+                LiquidEtherBackground(
+                    colors: store.visualizerColors,
+                    active: ui.expanded
+                )
+                .id(store.trackPresentationRevision)
+                .transition(.opacity)
+                .animation(HookyMotion.backgroundPalette, value: store.trackPresentationRevision)
+            }
 
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        expandedHeaderLeading
-                            .frame(width: 112, alignment: .leading)
-                        Spacer()
-                        if ui.screenshotPreview == nil {
-                            SpectrumView(signal: store.spectrumSignal, colors: store.visualizerColors,
-                                         active: ui.expanded && (store.nowPlaying.isPlaying || store.audioActive),
-                                         expanded: true)
-                                .frame(width: 104, height: 18).frame(width: 112)
-                        } else {
-                            Color.clear.frame(width: 112)
-                        }
-                    }
-                    .padding(.horizontal, 9).frame(height: ui.notchHeight + 7)
-
-                    if let preview = ui.screenshotPreview {
-                        ScreenshotCapturePane(url: preview) {
-                            clipboard.copyScreenshot(at: preview)
-                            ui.screenshotCopied()
-                        }
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    expandedHeaderLeading
+                        .frame(width: 112, alignment: .leading)
+                    Spacer()
+                    if ui.screenshotPreview == nil {
+                        SpectrumView(signal: store.spectrumSignal, colors: store.visualizerColors,
+                                     active: ui.expanded && (store.nowPlaying.isPlaying || store.audioActive),
+                                     expanded: true)
+                            .frame(width: 104, height: 18).frame(width: 112)
                     } else {
+                        Color.clear.frame(width: 112)
+                    }
+                }
+                .padding(.horizontal, 9).frame(height: ui.notchHeight + 7)
+
+                if let preview = ui.screenshotPreview {
+                    ScreenshotCapturePane(url: preview) {
+                        clipboard.copyScreenshot(at: preview)
+                        ui.screenshotCopied()
+                    }
+                } else {
+                    HookyGlassContainer(spacing: 5) {
                         HStack(spacing: 5) {
                             tabButton(L10n.tr("tab.music"), 0, "music.note")
                             tabButton(L10n.tr("tab.clipboard"), 1, "rectangle.on.rectangle.angled")
@@ -219,17 +219,25 @@ struct HookyBarView: View {
                                 tabButton(L10n.tr("tab.developer"), 3, "hammer")
                             }
                         }
-                        .frame(height: 30)
-                        .padding(.horizontal, 12).padding(.bottom, 9)
+                    }
+                    .frame(height: 30)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 9)
+                    .zIndex(1)
 
+                    HookyGlassContainer(spacing: 8) {
                         ZStack {
                             selectedPane
                                 .id(ui.tab)
                                 .transition(tabTransition)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Нативный GlassEffectContainer извлекает стеклянные формы в отдельный
+                    // render pass. Отдельный контейнер и маска не дают карточкам ScrollView
+                    // рисоваться поверх шапки и панели вкладок при прокрутке с инерцией.
+                    .mask(Rectangle())
+                    .clipped()
                 }
             }
         }
