@@ -89,6 +89,11 @@
 "dev.workspace" = "Рабочий проект";
 "dev.changed" = "Изменено";
 "dev.untracked" = "Новые";
+"dev.changedShort" = "Изм.";
+"dev.untrackedShort" = "Новые";
+"dev.ahead" = "Вперёд";
+"dev.behind" = "Позади";
+"dev.stash" = "Stash";
 "dev.chooseProject" = "Выбрать папку проекта";
 "dev.change" = "Сменить";
 "dev.changeHelp" = "Выбрать другой рабочий проект";
@@ -113,6 +118,14 @@
 "dev.ci.success" = "Проверки прошли";
 "dev.ci.failure" = "Сборка упала";
 "dev.ci.cancelled" = "Запуск завершён без результата";
+"dev.pr.draft" = "Черновик";
+"dev.pr.conflicts" = "Есть конфликты";
+"dev.pr.changesRequested" = "Нужны правки";
+"dev.pr.approved" = "Одобрено";
+"dev.pr.reviewRequired" = "Нужен review";
+"dev.pr.checks.format" = "%d/%d checks";
+"dev.pr.checksPending.format" = "%d checks в работе";
+"dev.pr.checksFailed.format" = "%d checks упало";
 
 "event.bluetooth.device" = "Bluetooth-устройство";
 "event.connected" = "Подключено";

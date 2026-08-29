@@ -8,7 +8,7 @@ enum ToolAction: String, Hashable {
     case openWorkspaceInTerminal
     case openWorkspaceInFinder
     case openDeveloperRepository
-    case openLatestWorkflow
+    case openDeveloperActivity
 }
 
 enum DeveloperIDE: String, CaseIterable, Identifiable {
@@ -99,9 +99,17 @@ struct DeveloperWorkspaceSnapshot: Equatable {
     var branch = "—"
     var changedFiles = 0
     var untrackedFiles = 0
+    var ahead = 0
+    var behind = 0
+    var stashCount = 0
     var lastCommit = ""
 
     var isConfigured: Bool { !path.isEmpty }
+}
+
+enum DeveloperActivityKind: Equatable {
+    case workflow
+    case pullRequest
 }
 
 enum DeveloperCIState: Equatable {
@@ -117,6 +125,7 @@ enum DeveloperCIState: Equatable {
 
 struct DeveloperCISnapshot: Equatable {
     var repository = ""
+    var kind: DeveloperActivityKind = .workflow
     var workflow = "GitHub Actions"
     var title = L10n.tr("dev.ci.addOrigin")
     var branch = ""

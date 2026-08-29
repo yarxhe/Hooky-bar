@@ -92,6 +92,34 @@ struct AdapterContractTests {
         #expect(adapter.stopCount == 1)
     }
 
+    @Test func developerGitSnapshotParsesStablePorcelainState() {
+        let status = """
+        # branch.oid abc123
+        # branch.head feature/dev-panel
+        # branch.upstream origin/feature/dev-panel
+        # branch.ab +2 -1
+        # stash 3
+        1 .M N... 100644 100644 100644 abc abc Sources/App.swift
+        2 R. N... 100644 100644 100644 abc abc R100 Sources/New.swift\tSources/Old.swift
+        u UU N... 100644 100644 100644 100644 abc abc abc Sources/Conflict.swift
+        ? Notes.md
+        """
+
+        let snapshot = DeveloperToolAdapter.snapshot(
+            for: URL(fileURLWithPath: "/tmp/HookyTest", isDirectory: true),
+            status: status,
+            commit: "abc123  Improve Dev panel"
+        )
+
+        #expect(snapshot.branch == "feature/dev-panel")
+        #expect(snapshot.changedFiles == 3)
+        #expect(snapshot.untrackedFiles == 1)
+        #expect(snapshot.ahead == 2)
+        #expect(snapshot.behind == 1)
+        #expect(snapshot.stashCount == 3)
+        #expect(snapshot.lastCommit == "abc123  Improve Dev panel")
+    }
+
     @Test func systemEventLayoutExtendsBelowCompactChrome() {
         let ui = InterfaceModel()
         ui.notchWidth = 204

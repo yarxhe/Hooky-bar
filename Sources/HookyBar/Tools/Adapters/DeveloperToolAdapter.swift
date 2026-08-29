@@ -82,7 +82,7 @@ final class DeveloperToolAdapter: ToolActionAdapter {
             return
         }
         DispatchQueue.global(qos: .utility).async {
-            let status = Self.runGit(["status", "--porcelain=1", "--branch"], at: workspaceURL)
+            let status = Self.runGit(["status", "--porcelain=v2", "--branch", "--show-stash"], at: workspaceURL)
             let commit = Self.runGit(["log", "-1", "--pretty=%h  %s"], at: workspaceURL)
             let snapshot = Self.snapshot(for: workspaceURL, status: status, commit: commit)
             DispatchQueue.main.async { completion(snapshot) }
@@ -123,7 +123,7 @@ final class DeveloperToolAdapter: ToolActionAdapter {
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func snapshot(for folder: URL, status: String?, commit: String?) -> DeveloperWorkspaceSnapshot {
+    static func snapshot(for folder: URL, status: String?, commit: String?) -> DeveloperWorkspaceSnapshot {
         guard let status else {
             return DeveloperWorkspaceSnapshot(
                 folderName: folder.lastPathComponent,
@@ -134,17 +134,28 @@ final class DeveloperToolAdapter: ToolActionAdapter {
         }
 
         let lines = status.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
-        let branchLine = lines.first(where: { $0.hasPrefix("## ") })
-        let branch = branchLine
-            .map { String($0.dropFirst(3)).components(separatedBy: "...").first ?? "—" }
-            ?? "—"
-        let files = lines.filter { !$0.hasPrefix("## ") }
+        let branch = lines.first(where: { $0.hasPrefix("# branch.head ") })
+            .map { String($0.dropFirst("# branch.head ".count)) } ?? "—"
+        let aheadBehind = lines.first(where: { $0.hasPrefix("# branch.ab ") })?
+            .split(separator: " ") ?? []
+        let ahead = aheadBehind.first(where: { $0.hasPrefix("+") })
+            .flatMap { Int($0.dropFirst()) } ?? 0
+        let behind = aheadBehind.first(where: { $0.hasPrefix("-") })
+            .flatMap { Int($0.dropFirst()) } ?? 0
+        let stashCount = lines.first(where: { $0.hasPrefix("# stash ") })
+            .flatMap { Int($0.dropFirst("# stash ".count)) } ?? 0
+        let files = lines.filter { !$0.hasPrefix("# ") }
         return DeveloperWorkspaceSnapshot(
             folderName: folder.lastPathComponent,
             path: folder.path,
             branch: branch,
-            changedFiles: files.filter { !$0.hasPrefix("??") }.count,
-            untrackedFiles: files.filter { $0.hasPrefix("??") }.count,
+            changedFiles: files.filter {
+                $0.hasPrefix("1 ") || $0.hasPrefix("2 ") || $0.hasPrefix("u ")
+            }.count,
+            untrackedFiles: files.filter { $0.hasPrefix("? ") }.count,
+            ahead: ahead,
+            behind: behind,
+            stashCount: stashCount,
             lastCommit: commit ?? ""
         )
     }

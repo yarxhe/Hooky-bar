@@ -23,11 +23,23 @@ struct DeveloperPane: View {
         VStack(alignment: .leading, spacing: 7) {
             if tools.workspace.isConfigured {
                 workspaceHeader
-                HStack(spacing: 6) {
-                    gitBadge(L10n.tr("dev.changed"), "\(tools.workspace.changedFiles)", "pencil.line")
-                    gitBadge(L10n.tr("dev.untracked"), "\(tools.workspace.untrackedFiles)", "plus")
+
+                if !tools.workspace.lastCommit.isEmpty {
+                    Text(tools.workspace.lastCommit)
+                        .font(.system(size: 8, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .lineLimit(1)
+                        .padding(.horizontal, 2)
                 }
-                ciStatusRow
+
+                HStack(spacing: 5) {
+                    gitMetric(L10n.tr("dev.changedShort"), tools.workspace.changedFiles, "pencil.line")
+                    gitMetric(L10n.tr("dev.untrackedShort"), tools.workspace.untrackedFiles, "plus")
+                    gitMetric(L10n.tr("dev.ahead"), tools.workspace.ahead, "arrow.up")
+                    gitMetric(L10n.tr("dev.behind"), tools.workspace.behind, "arrow.down")
+                    gitMetric(L10n.tr("dev.stash"), tools.workspace.stashCount, "tray.full")
+                }
+                activityStatusRow
             } else {
                 Button(action: tools.chooseDeveloperWorkspace) {
                     Label(L10n.tr("dev.chooseProject"), systemImage: "folder.badge.plus")
@@ -92,8 +104,8 @@ struct DeveloperPane: View {
         }
     }
 
-    private var ciStatusRow: some View {
-        Button(action: tools.openLatestWorkflow) {
+    private var activityStatusRow: some View {
+        Button(action: tools.openDeveloperActivity) {
             HStack(spacing: 8) {
                 Image(systemName: ciSymbol)
                     .font(.system(size: 12, weight: .bold))
@@ -114,7 +126,9 @@ struct DeveloperPane: View {
                 Text(tools.developerCI.status)
                     .font(.system(size: 7.5, weight: .bold))
                     .foregroundStyle(ciColor.opacity(0.9))
-                    .lineLimit(1)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(2)
+                    .frame(maxWidth: 94, alignment: .trailing)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.white.opacity(0.25))
@@ -157,15 +171,15 @@ struct DeveloperPane: View {
         .buttonStyle(SpringPressButtonStyle())
     }
 
-    private func gitBadge(_ title: String, _ value: String, _ symbol: String) -> some View {
-        HStack(spacing: 5) {
+    private func gitMetric(_ title: String, _ value: Int, _ symbol: String) -> some View {
+        HStack(spacing: 4) {
             Image(systemName: symbol).font(.system(size: 9, weight: .semibold))
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.system(size: 7.5, weight: .bold)).foregroundStyle(.white.opacity(0.36))
-                Text(value).font(.system(size: 8.5, weight: .semibold, design: .monospaced)).lineLimit(1)
+                Text("\(value)").font(.system(size: 8.5, weight: .semibold, design: .monospaced)).lineLimit(1)
             }
         }
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: 29)
         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -189,6 +203,9 @@ struct DeveloperPane: View {
     }
 
     private var ciSymbol: String {
+        if tools.developerCI.kind == .pullRequest {
+            return "arrow.triangle.branch"
+        }
         switch tools.developerCI.state {
         case .success: return "checkmark.circle.fill"
         case .failure: return "xmark.octagon.fill"

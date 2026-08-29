@@ -89,6 +89,11 @@
 "dev.workspace" = "Workspace";
 "dev.changed" = "Changed";
 "dev.untracked" = "New";
+"dev.changedShort" = "Changed";
+"dev.untrackedShort" = "New";
+"dev.ahead" = "Ahead";
+"dev.behind" = "Behind";
+"dev.stash" = "Stash";
 "dev.chooseProject" = "Choose project folder";
 "dev.change" = "Change";
 "dev.changeHelp" = "Choose another workspace";
@@ -113,6 +118,14 @@
 "dev.ci.success" = "Checks passed";
 "dev.ci.failure" = "Build failed";
 "dev.ci.cancelled" = "Run ended without a result";
+"dev.pr.draft" = "Draft";
+"dev.pr.conflicts" = "Conflicts";
+"dev.pr.changesRequested" = "Changes requested";
+"dev.pr.approved" = "Approved";
+"dev.pr.reviewRequired" = "Review required";
+"dev.pr.checks.format" = "%d/%d checks";
+"dev.pr.checksPending.format" = "%d checks pending";
+"dev.pr.checksFailed.format" = "%d checks failed";
 
 "event.bluetooth.device" = "Bluetooth device";
 "event.connected" = "Connected";

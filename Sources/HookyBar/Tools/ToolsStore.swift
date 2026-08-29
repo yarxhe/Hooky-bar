@@ -86,8 +86,8 @@ final class ToolsStore: ObservableObject {
         if !perform(.openDeveloperRepository).succeeded { showStatus(L10n.tr("tools.noGitHubOrigin")) }
     }
 
-    func openLatestWorkflow() {
-        if !perform(.openLatestWorkflow).succeeded { showStatus(L10n.tr("tools.buildUnavailable")) }
+    func openDeveloperActivity() {
+        if !perform(.openDeveloperActivity).succeeded { showStatus(L10n.tr("tools.buildUnavailable")) }
     }
 
     func refreshDeveloperWorkspace() {
