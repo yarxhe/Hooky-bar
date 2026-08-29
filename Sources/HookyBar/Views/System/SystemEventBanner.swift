@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Единая нижняя карточка для VPN, Bluetooth, Calendar, AirDrop и Pomodoro.
-/// Верхние крылья остаются chrome плеера или таймера и не дублируют событие.
+/// Нижнее содержимое общей поверхности VPN, Bluetooth, Calendar, AirDrop и Pomodoro.
+/// Собственного фона и анимации здесь нет: геометрия всего острова движется как одно целое.
 struct SystemEventBanner: View {
     let event: HookySystemEvent
     let width: CGFloat
@@ -30,21 +30,6 @@ struct SystemEventBanner: View {
         }
         .padding(.horizontal, 12)
         .frame(width: width, height: 52)
-        .background {
-            ZStack {
-                Color.white.opacity(0.045)
-                LinearGradient(
-                    colors: [tint.opacity(0.16), tint.opacity(0.045), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            }
-        }
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 0.5)
-        }
     }
 
     private var eventIcon: some View {
@@ -61,6 +46,5 @@ struct SystemEventBanner: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(tint.opacity(0.18), lineWidth: 0.5)
             }
-            .symbolEffect(.bounce, value: event.id)
     }
 }

@@ -20,8 +20,6 @@ struct HookyBarView: View {
                     screenshotSuccess
                 } else if ui.screenshotPreview != nil {
                     collapsedContent
-                } else if features.currentEvent != nil, !ui.expanded {
-                    systemEventContent
                 } else {
                     musicTransitionContent
                 }
@@ -111,27 +109,17 @@ struct HookyBarView: View {
             if isIdle {
                 Color.black.opacity(0.001)
             } else {
-                compactBarContent()
-            }
-        }
-    }
-
-    private var systemEventContent: some View {
-        Group {
-            if let event = features.currentEvent {
                 VStack(spacing: 0) {
-                    compactBarContent(suppressIdleChrome: true)
+                    // Верх и нижнее уведомление принадлежат одной поверхности.
+                    // Высота общего контейнера раскрывает строку снизу без второй move-анимации.
+                    compactBarContent(suppressIdleChrome: features.currentEvent != nil)
 
-                    SystemEventBanner(event: event, width: compactSurfaceWidth)
-                        .id(event.id)
-                        .transition(
-                            .move(edge: .top)
-                                .combined(with: .opacity)
-                        )
+                    if let event = features.currentEvent {
+                        SystemEventBanner(event: event, width: compactSurfaceWidth)
+                    }
                 }
             }
         }
-        .frame(width: compactSurfaceWidth, height: ui.notchHeight + 52, alignment: .top)
     }
 
     /// Во время системного события верхняя часть остаётся настоящим mini-player chrome.
@@ -177,7 +165,6 @@ struct HookyBarView: View {
             .frame(width: 56, height: ui.notchHeight)
         }
         .frame(width: compactSurfaceWidth, height: ui.notchHeight)
-        .background(Color.black)
     }
 
     private var screenshotSuccess: some View {
