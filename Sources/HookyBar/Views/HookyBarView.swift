@@ -231,12 +231,12 @@ struct HookyBarView: View {
                                 .id(ui.tab)
                                 .transition(tabTransition)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // Нативный GlassEffectContainer извлекает стеклянные формы в отдельный
-                    // render pass. Отдельный контейнер и маска не дают карточкам ScrollView
-                    // рисоваться поверх шапки и панели вкладок при прокрутке с инерцией.
-                    .mask(Rectangle())
+                    // Контент остаётся в отдельном Glass render pass, но без mask:
+                    // mask растрировал всю прокрутку и размывал текст во время движения.
                     .clipped()
                 }
             }
