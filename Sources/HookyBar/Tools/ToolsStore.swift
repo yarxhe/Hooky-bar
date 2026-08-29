@@ -8,16 +8,19 @@ final class ToolsStore: ObservableObject {
     @Published private(set) var selectedIDE: DeveloperIDE
     @Published private(set) var workspace = DeveloperWorkspaceSnapshot()
     @Published private(set) var developerCI = DeveloperCISnapshot()
+    @Published private(set) var developerCommand = DeveloperCommandSnapshot()
+    @Published private(set) var developerGitHubActivity = DeveloperGitHubActivitySnapshot()
     @Published private(set) var status: String?
 
     private var caffeinateProcess: Process?
     private var adapters: [any ToolActionAdapter]
     private let developerAdapter: DeveloperToolAdapter
     private let githubAdapter: GitHubToolAdapter
+    private let commandAdapter: DeveloperCommandAdapter
     private let developerModeKey = "tools.developerMode"
 
     var utilityCapabilities: [IntegrationCapabilityDeclaration] {
-        adapters.map(\.capability).sorted { $0.id < $1.id }
+        (adapters.map(\.capability) + [commandAdapter.capability]).sorted { $0.id < $1.id }
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -25,8 +28,10 @@ final class ToolsStore: ObservableObject {
         let developerAdapter = DeveloperToolAdapter(defaults: defaults)
         selectedIDE = developerAdapter.selectedIDE
         let githubAdapter = GitHubToolAdapter()
+        let commandAdapter = DeveloperCommandAdapter()
         self.developerAdapter = developerAdapter
         self.githubAdapter = githubAdapter
+        self.commandAdapter = commandAdapter
         adapters = [SystemToolAdapter(), developerAdapter, githubAdapter]
     }
 
@@ -90,27 +95,89 @@ final class ToolsStore: ObservableObject {
         if !perform(.openDeveloperActivity).succeeded { showStatus(L10n.tr("tools.buildUnavailable")) }
     }
 
+    func openDeveloperIssues() {
+        showFailureIfNeeded(perform(.openDeveloperIssues))
+    }
+
+    func openDeveloperRelease() {
+        showFailureIfNeeded(perform(.openDeveloperRelease))
+    }
+
+    func openDeveloperDiscussion() {
+        showFailureIfNeeded(perform(.openDeveloperDiscussion))
+    }
+
+    func openDeveloperGitHubItem(_ item: DeveloperGitHubActivityItem) {
+        showFailureIfNeeded(githubAdapter.open(item))
+    }
+
+    func runDeveloperCommand(_ command: DeveloperCommandKind) {
+        guard let workspaceURL = developerAdapter.workspaceURL else {
+            showStatus(L10n.tr("tools.chooseProjectFirst"))
+            return
+        }
+        if developerCommand.state == .running {
+            if developerCommand.lastCommand == command { commandAdapter.cancel() }
+            return
+        }
+        guard developerCommand.isAvailable(command) else {
+            showStatus(L10n.tr("dev.command.unavailable"))
+            return
+        }
+
+        developerCommand.lastCommand = command
+        developerCommand.state = .running
+        developerCommand.output = ""
+        guard commandAdapter.run(command, at: workspaceURL, completion: { [weak self] state, output in
+            self?.developerCommand.state = state
+            self?.developerCommand.output = output
+            self?.refreshDeveloperWorkspace()
+        }) else {
+            developerCommand.state = .failure(-1)
+            showStatus(L10n.tr("dev.command.launchFailed"))
+            return
+        }
+    }
+
     func refreshDeveloperWorkspace() {
         guard developerModeEnabled else { return }
         status = L10n.tr("tools.refreshing")
         developerAdapter.inspectWorkspace { [weak self] snapshot in
             guard let self else { return }
+            let workspaceChanged = self.workspace.path != snapshot.path
             self.workspace = snapshot
             guard let workspaceURL = self.developerAdapter.workspaceURL else {
                 self.githubAdapter.clear()
                 self.developerCI = DeveloperCISnapshot()
+                self.developerCommand = DeveloperCommandSnapshot()
+                self.developerGitHubActivity = DeveloperGitHubActivitySnapshot()
                 self.status = nil
                 return
+            }
+            if workspaceChanged {
+                self.developerCI = DeveloperCISnapshot()
+                self.developerGitHubActivity = DeveloperGitHubActivitySnapshot()
+                self.developerCommand = self.commandAdapter.inspectWorkspace(at: workspaceURL)
+            } else if self.developerCommand.state != .running {
+                let previous = self.developerCommand
+                self.developerCommand = self.commandAdapter.inspectWorkspace(at: workspaceURL)
+                self.developerCommand.lastCommand = previous.lastCommand
+                self.developerCommand.state = previous.state
+                self.developerCommand.output = previous.output
             }
             self.githubAdapter.inspectWorkspace(at: workspaceURL) { [weak self] ciSnapshot in
                 self?.developerCI = ciSnapshot
                 self?.status = nil
+            }
+            self.githubAdapter.inspectActivity(at: workspaceURL) { [weak self] activity in
+                self?.developerGitHubActivity = activity
             }
         }
     }
 
     func stop() {
         stopKeepingAwake()
+        commandAdapter.stop()
     }
 
     func refreshLocalizedContent() {
@@ -120,6 +187,8 @@ final class ToolsStore: ObservableObject {
         } else {
             workspace = DeveloperWorkspaceSnapshot()
             developerCI = DeveloperCISnapshot()
+            developerCommand = DeveloperCommandSnapshot()
+            developerGitHubActivity = DeveloperGitHubActivitySnapshot()
         }
     }
 

@@ -9,6 +9,9 @@ enum ToolAction: String, Hashable {
     case openWorkspaceInFinder
     case openDeveloperRepository
     case openDeveloperActivity
+    case openDeveloperIssues
+    case openDeveloperRelease
+    case openDeveloperDiscussion
 }
 
 enum DeveloperIDE: String, CaseIterable, Identifiable {
@@ -136,4 +139,54 @@ struct DeveloperCISnapshot: Equatable {
 
     var hasRepository: Bool { repositoryURL != nil }
     var canOpenRun: Bool { runURL != nil }
+}
+
+enum DeveloperCommandKind: String, CaseIterable, Equatable {
+    case run
+    case test
+    case build
+}
+
+enum DeveloperCommandRunState: Equatable {
+    case idle
+    case running
+    case success
+    case failure(Int32)
+    case cancelled
+}
+
+struct DeveloperCommandSnapshot: Equatable {
+    var toolchain = ""
+    var availableCommands: Set<DeveloperCommandKind> = []
+    var lastCommand: DeveloperCommandKind?
+    var state: DeveloperCommandRunState = .idle
+    var output = ""
+
+    func isAvailable(_ command: DeveloperCommandKind) -> Bool {
+        availableCommands.contains(command)
+    }
+}
+
+struct DeveloperGitHubActivityItem: Equatable, Identifiable {
+    enum Kind: String, Equatable {
+        case issue
+        case release
+        case discussion
+    }
+
+    let kind: Kind
+    let title: String
+    let subtitle: String
+    let url: URL
+
+    var id: String { "\(kind.rawValue):\(url.absoluteString)" }
+}
+
+struct DeveloperGitHubActivitySnapshot: Equatable {
+    var issues: [DeveloperGitHubActivityItem] = []
+    var latestRelease: DeveloperGitHubActivityItem?
+    var pullRequestDiscussion: DeveloperGitHubActivityItem?
+
+    var openIssueCount: Int { issues.count }
+    var latestIssue: DeveloperGitHubActivityItem? { issues.first }
 }

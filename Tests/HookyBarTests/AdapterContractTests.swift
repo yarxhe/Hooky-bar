@@ -120,6 +120,22 @@ struct AdapterContractTests {
         #expect(snapshot.lastCommit == "abc123  Improve Dev panel")
     }
 
+    @Test func developerCommandAdapterDetectsSwiftPackageWithoutRunningIt() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HookyCommandAdapter-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let manifest = folder.appendingPathComponent("Package.swift")
+        #expect(FileManager.default.createFile(atPath: manifest.path, contents: Data()))
+
+        let adapter = DeveloperCommandAdapter()
+        let snapshot = adapter.inspectWorkspace(at: folder)
+
+        #expect(snapshot.toolchain == "Swift")
+        #expect(snapshot.availableCommands == Set(DeveloperCommandKind.allCases))
+        #expect(snapshot.state == .idle)
+    }
+
     @Test func systemEventLayoutExtendsBelowCompactChrome() {
         let ui = InterfaceModel()
         ui.notchWidth = 204
