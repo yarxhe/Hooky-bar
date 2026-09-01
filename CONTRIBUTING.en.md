@@ -87,6 +87,14 @@ Every new integration should follow the [internal adapter checklist](Documentati
 - Reflect every new capability in settings and the [permissions matrix](Documentation/Permissions.en.md).
 - Reuse Hooky bar geometry and motion instead of inventing a separate surface for an integration.
 
+## Pull requests
+
+- Create a dedicated branch from the latest `master` for each independent change.
+- Avoid mixing a fix, refactor, and feature in one PR unless they genuinely depend on each other.
+- Complete the PR template with the motivation, verification steps, and related Issue or Discussion.
+- For UI changes, attach a screenshot or video and verify the idle, compact, and expanded states.
+- Before submitting, make sure the diff contains no local builds, secrets, or unrelated files.
+
 ## Checks before committing
 
 Minimum checks:
