@@ -15,7 +15,8 @@ This document describes the architecture of the current application. Planned pub
 ┌───────────────────────▼─────────────────────────────┐
 │ Stores                                              │
 │ MusicStore · ClipboardStore · NotesStore · ToolsStore│
-│ SystemFeatureStore · InterfaceModel                 │
+│ SystemFeatureStore · IntegrationDiagnosticsStore    │
+│ InterfaceModel                                      │
 └───────────────────────┬─────────────────────────────┘
                         │ internal contracts
 ┌───────────────────────▼─────────────────────────────┐
@@ -63,6 +64,7 @@ Root dependencies are created in `AppDelegate`:
 - `ToolsStore`;
 - `VolumeStore`;
 - `SystemFeatureStore`;
+- `IntegrationDiagnosticsStore`;
 - `InterfaceModel`;
 - `AppLocalization`.
 
@@ -103,6 +105,8 @@ External source
 
 The clipboard follows this flow: every source publishes a full snapshot of its items and, when available, a separate newly inserted item.
 
+`ClipboardRetentionPolicy` bounds the shared history to 48 unpinned items and 24 hours. Pinned items do not count toward the limit. Automatic and manual cleanup pass items to their source adapters in one batch operation; the system clipboard and original screenshot files are never deleted.
+
 ## State and identity
 
 - Adapter identifiers must remain stable between launches.
@@ -121,6 +125,14 @@ Track identity is currently derived from normalized title and artist. When ident
 - Observers must be idempotent: repeated `start` calls must not create another watcher or timer.
 - Adapter callbacks must not strongly retain their store.
 - Event-driven system APIs are preferred over idle polling.
+
+## Integration diagnostics
+
+`IntegrationDiagnosticsStore` builds one status snapshot for music, notes, system features, and developer tools through `IntegrationDiagnosticsAdapter`. Potentially slow CDP, GitHub CLI, and system-permission checks run away from the main queue; a late result from an outdated refresh is discarded.
+
+Diagnostics only read existing state and never trigger a system permission prompt. macOS Settings opens only after an explicit user action. macOS does not expose a reliable non-invasive Automation authorization check before first use, so that permission is reported as “checked on use.”
+
+A separate pure builder creates the diagnostics report, which is copied through the adapter only after the user presses the button. The report contains the app version, macOS version, and integration states; paths, clipboard contents, and media metadata are excluded.
 
 ## Panel geometry
 
@@ -143,6 +155,7 @@ This constraint is especially important for the SDK: extensions must not introdu
 Sources/HookyBar/
 ├── App/          composition root and NSPanel
 ├── Clipboard/    source models, adapters, and store
+├── Integration/  external-app and system-access diagnostics
 ├── Interface/    geometry, theme, and motion
 ├── Localization/ application language and string resources
 ├── Models/       shared models of the current executable target

@@ -25,7 +25,7 @@ body:
     id: version
     attributes:
       label: Hooky Bar version / Версия Hooky Bar
-      placeholder: v1.2.0
+      placeholder: v1.3.0
     validations:
       required: true
 

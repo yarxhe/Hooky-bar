@@ -53,6 +53,9 @@ struct HookyBarView: View {
             }
         }
         .hookyGlassRevision(ui.glassRevision)
+        // Внешние приложения (например Terminal) не должны переводить нативное
+        // стекло открытой non-activating панели в неактивные обычные блоки.
+        .environment(\.controlActiveState, .active)
         .environment(\.locale, localization.locale)
     }
 

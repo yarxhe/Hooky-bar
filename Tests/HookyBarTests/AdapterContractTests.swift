@@ -73,6 +73,24 @@ struct AdapterContractTests {
         #expect(store.artworkPresentationRevision == initialArtworkRevision + 1)
     }
 
+    @Test func coldMusicLaunchKeepsOnePlayIntentUntilPlaybackIsConfirmed() async throws {
+        let store = MusicStore()
+        let adapter = ColdLaunchMusicAdapterDouble(
+            source: .spotify,
+            mediaController: store.activeAdapter.mediaController,
+            failuresBeforeReady: 2
+        )
+        store.adapterRegistry.register(adapter)
+        store.selectedMusicSource = .spotify
+
+        store.togglePlayback()
+        try await Task.sleep(for: .seconds(2.5))
+
+        #expect(adapter.launchCount == 1)
+        #expect(adapter.startPlaybackCount == 3)
+        #expect(store.pendingPlaybackStartToken == nil)
+    }
+
     @Test func systemEventAdapterIsStartedThroughStoreRegistry() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: "feature.vpn")
@@ -178,6 +196,190 @@ struct AdapterContractTests {
             .init("org.nspasteboard.TransientType")
         ]))
     }
+
+    @Test func clipboardRetentionKeepsPinsAndBoundsHistory() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let policy = ClipboardRetentionPolicy(
+            maximumUnpinnedItems: 1,
+            maximumAge: 100,
+            cleanupInterval: 60
+        )
+        let items = [
+            clipboardItem(id: "latest", createdAt: now.addingTimeInterval(-1)),
+            clipboardItem(id: "overflow", createdAt: now.addingTimeInterval(-2)),
+            clipboardItem(id: "expired", createdAt: now.addingTimeInterval(-200)),
+            clipboardItem(id: "pinned-expired", createdAt: now.addingTimeInterval(-300))
+        ]
+
+        let removed = policy.itemsToRemove(
+            from: items,
+            pinnedIDs: ["pinned-expired"],
+            referenceDate: now
+        )
+
+        #expect(Set(removed.map(\.id)) == ["overflow", "expired"])
+    }
+
+    @Test @MainActor func clipboardClearUsesOneBatchAdapterOperation() async throws {
+        let adapter = ClipboardAdapterDouble(items: [
+            clipboardItem(id: "first", createdAt: Date()),
+            clipboardItem(id: "second", createdAt: Date())
+        ])
+        let store = ClipboardStore(
+            adapters: [adapter],
+            retentionPolicy: ClipboardRetentionPolicy(
+                maximumUnpinnedItems: 10,
+                maximumAge: 1_000,
+                cleanupInterval: 60
+            )
+        )
+        store.startMonitoring()
+        defer { store.stopMonitoring() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(store.items.count == 2)
+        #expect(store.clearUnpinnedHistory() == 2)
+        #expect(store.items.isEmpty)
+        #expect(adapter.batchRemoveCount == 1)
+    }
+
+    @Test func integrationDiagnosticsExposeDeniedPermissionWithoutRequestingIt() throws {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
+            calendar: .denied,
+            calendarEnabled: true
+        ))
+        let calendar = try #require(items.first { $0.id == "system.calendar" })
+
+        #expect(calendar.status == .needsAttention)
+        #expect(calendar.settingsPermission == .calendar)
+    }
+
+    @Test func integrationDiagnosticsKeepDisabledFeaturesInactive() throws {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
+            bluetooth: .denied,
+            bluetoothEnabled: false,
+            airDropEnabled: false
+        ))
+        let bluetooth = try #require(items.first { $0.id == "system.bluetooth" })
+        let airDrop = try #require(items.first { $0.id == "system.airdrop" })
+
+        #expect(bluetooth.status == .inactive)
+        #expect(bluetooth.settingsPermission == nil)
+        #expect(airDrop.status == .inactive)
+    }
+
+    @Test func yandexDiagnosticsRequireFallbackOnlyWhenControlChannelIsUnavailable() throws {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
+            musicControlChannelAvailable: false,
+            accessibility: .notDetermined
+        ))
+        let controls = try #require(items.first { $0.id == "music.yandex.controls" })
+
+        #expect(controls.status == .checkedOnUse)
+        #expect(controls.settingsPermission == .accessibility)
+    }
+
+    @Test func diagnosticsReportContainsOnlyShareableEnvironmentState() {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext())
+        let report = IntegrationDiagnosticsReportBuilder.makeReport(
+            items: items,
+            appVersion: "1.3.0 (4)",
+            operatingSystem: "macOS 15.0",
+            generatedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        #expect(report.contains("Hooky bar diagnostics"))
+        #expect(report.contains("App: 1.3.0 (4)"))
+        #expect(report.contains("[ready]"))
+        #expect(!report.contains("/Users/"))
+        #expect(!report.contains(NSHomeDirectory()))
+    }
+}
+
+private func clipboardItem(id: String, createdAt: Date) -> ClipboardItem {
+    ClipboardItem(
+        id: id,
+        sourceID: "test.clipboard",
+        sourceName: "Tests",
+        sourceBundleIdentifier: nil,
+        kind: .text,
+        text: id,
+        fileURL: nil,
+        createdAt: createdAt
+    )
+}
+
+private func diagnosticsContext(
+    musicControlChannelAvailable: Bool? = true,
+    accessibility: IntegrationAuthorizationState = .granted,
+    calendar: IntegrationAuthorizationState = .granted,
+    bluetooth: IntegrationAuthorizationState = .granted,
+    calendarEnabled: Bool = true,
+    bluetoothEnabled: Bool = true,
+    airDropEnabled: Bool = true
+) -> IntegrationDiagnosticsContext {
+    IntegrationDiagnosticsContext(
+        musicSource: .yandex,
+        musicInstalled: true,
+        musicRunning: true,
+        musicControlChannelAvailable: musicControlChannelAvailable,
+        notesApp: .obsidian,
+        notesInstalled: true,
+        accessibility: accessibility,
+        calendar: calendar,
+        bluetooth: bluetooth,
+        screenshotsFolder: .granted,
+        downloadsFolder: .granted,
+        calendarEnabled: calendarEnabled,
+        bluetoothEnabled: bluetoothEnabled,
+        airDropEnabled: airDropEnabled,
+        developerModeEnabled: false,
+        selectedIDE: .visualStudioCode,
+        selectedIDEInstalled: true,
+        githubCLIAvailable: true
+    )
+}
+
+private final class ClipboardAdapterDouble: ClipboardSourceAdapter {
+    let id = "test.clipboard"
+    let displayName = "Tests"
+    let capability = IntegrationCapabilityDeclaration(id: "test.clipboard")
+    private var items: [ClipboardItem]
+    private var receive: ((ClipboardAdapterUpdate) -> Void)?
+    private(set) var batchRemoveCount = 0
+
+    init(items: [ClipboardItem]) {
+        self.items = items
+    }
+
+    func start(receive: @escaping (ClipboardAdapterUpdate) -> Void) {
+        self.receive = receive
+        publish()
+    }
+
+    func stop() {
+        receive = nil
+    }
+
+    func copy(_ item: ClipboardItem) -> IntegrationResult { .success }
+
+    func remove(_ item: ClipboardItem) -> IntegrationResult {
+        items.removeAll { $0.id == item.id }
+        publish()
+        return .success
+    }
+
+    func remove(_ removedItems: [ClipboardItem]) -> IntegrationResult {
+        batchRemoveCount += 1
+        let ids = Set(removedItems.map(\.id))
+        items.removeAll { ids.contains($0.id) }
+        publish()
+        return .success
+    }
+
+    private func publish() {
+        receive?(ClipboardAdapterUpdate(sourceID: id, items: items, insertedItem: nil))
+    }
 }
 
 private final class NotesAdapterDouble: NotesAppAdapter {
@@ -209,5 +411,75 @@ private final class SystemEventAdapterDouble: SystemEventAdapter {
 
     func stop() {
         stopCount += 1
+    }
+}
+
+private final class ColdLaunchMusicAdapterDouble: MusicPlayerAdapter {
+    let source: MusicSource
+    let mediaController: MediaController
+    let capabilities = MusicAdapterCapabilities(
+        canLike: false,
+        canDislike: false,
+        canSeek: false,
+        canReadUpcomingTrack: false
+    )
+
+    private let lock = NSLock()
+    private let failuresBeforeReady: Int
+    private var running = false
+    private var playing = false
+    private var launches = 0
+    private var starts = 0
+
+    init(
+        source: MusicSource,
+        mediaController: MediaController,
+        failuresBeforeReady: Int
+    ) {
+        self.source = source
+        self.mediaController = mediaController
+        self.failuresBeforeReady = failuresBeforeReady
+    }
+
+    var launchCount: Int { locked { launches } }
+    var startPlaybackCount: Int { locked { starts } }
+
+    func isRunning() -> Bool { locked { running } }
+
+    func launch() {
+        locked {
+            launches += 1
+            running = true
+        }
+    }
+
+    func snapshot(from info: TrackInfo) -> MusicAdapterSnapshot? { nil }
+    func directSnapshot(context: MusicCommandContext) -> MusicAdapterSnapshot? { nil }
+    func playbackState() -> Bool? { locked { playing } }
+    func ratingState(context: MusicCommandContext) -> MusicRatingState? { nil }
+    func upcomingTrack(context: MusicCommandContext) -> UpcomingTrack? { nil }
+
+    func startPlayback(context: MusicCommandContext) -> MusicAdapterResult {
+        locked {
+            starts += 1
+            guard starts > failuresBeforeReady else {
+                return .failure(.adapterUnavailable)
+            }
+            playing = true
+            return .success
+        }
+    }
+
+    func togglePlayback(context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func nextTrack(context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func previousTrack(context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func seek(to seconds: Double, context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func setLiked(_ desired: Bool, context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func setDisliked(_ desired: Bool, context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+
+    private func locked<T>(_ operation: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return operation()
     }
 }

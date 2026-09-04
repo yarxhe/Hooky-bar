@@ -49,6 +49,13 @@ final class SystemTextClipboardAdapter: ClipboardSourceAdapter {
         return .success
     }
 
+    func remove(_ removedItems: [ClipboardItem]) -> IntegrationResult {
+        let ids = Set(removedItems.map(\.id))
+        items.removeAll { ids.contains($0.id) }
+        publish()
+        return .success
+    }
+
     static func shouldCapture(types: [NSPasteboard.PasteboardType]?) -> Bool {
         guard let types else { return true }
         return protectedTypes.isDisjoint(with: types)

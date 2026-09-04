@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Version 1.2.0</strong>
+  <strong>Version 1.3.0</strong>
 </p>
 
 <p align="center">
@@ -129,6 +129,6 @@ Every system permission belongs to a specific feature and does not imply screen 
 
 ## Project status
 
-Hooky bar is under active development. The current stable release is **1.2.0**. Built-in features and internal adapters are stabilized; a public SDK for third-party integrations is planned after user feedback.
+Hooky bar is under active development. The current stable release is **1.3.0**. Built-in features and internal adapters are stabilized; a public SDK for third-party integrations is planned after user feedback.
 
 To build the project or contribute an integration, see [CONTRIBUTING.en.md](CONTRIBUTING.en.md).

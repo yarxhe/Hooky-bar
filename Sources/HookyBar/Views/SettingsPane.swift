@@ -6,6 +6,7 @@ struct SettingsPane: View {
     @ObservedObject var tools: ToolsStore
     @ObservedObject var features: SystemFeatureStore
     @ObservedObject var localization: AppLocalization
+    @ObservedObject var diagnostics: IntegrationDiagnosticsStore
 
     var body: some View {
         ScrollView {
@@ -23,11 +24,17 @@ struct SettingsPane: View {
                 .pickerStyle(.segmented)
 
                 Divider()
+                IntegrationDiagnosticsSection(diagnostics: diagnostics)
+
+                Divider()
                 settingsHeader(L10n.tr("settings.music.title"), L10n.tr("settings.music.subtitle"))
 
                 HStack(spacing: 12) {
                     ForEach(MusicSource.allCases) { source in
-                        Button { store.selectMusicSource(source) } label: {
+                        Button {
+                            store.selectMusicSource(source)
+                            diagnostics.refresh()
+                        } label: {
                             VStack(spacing: 8) {
                                 MusicSourceIcon(source: source)
                                     .frame(width: 36, height: 36)
@@ -54,7 +61,10 @@ struct SettingsPane: View {
 
                 HStack(spacing: 12) {
                     ForEach(NotesApp.allCases) { app in
-                        Button { notes.select(app) } label: {
+                        Button {
+                            notes.select(app)
+                            diagnostics.refresh()
+                        } label: {
                             VStack(spacing: 7) {
                                 NotesAppIcon(app: app)
                                     .frame(width: 36, height: 36)
@@ -107,7 +117,10 @@ struct SettingsPane: View {
                     "chevron.left.forwardslash.chevron.right",
                     isOn: Binding(
                         get: { tools.developerModeEnabled },
-                        set: tools.setDeveloperModeEnabled
+                        set: {
+                            tools.setDeveloperModeEnabled($0)
+                            diagnostics.refresh()
+                        }
                     )
                 )
                 .padding(.horizontal, 12)
@@ -197,6 +210,7 @@ struct SettingsPane: View {
         }
         .frame(width: 430, height: 520, alignment: .topLeading)
         .environment(\.locale, localization.locale)
+        .onAppear(perform: diagnostics.refresh)
     }
 
     private func settingsHeader(_ title: String, _ subtitle: String) -> some View {
@@ -224,6 +238,7 @@ struct SettingsPane: View {
     private func ideSelectionButton(_ ide: DeveloperIDE) -> some View {
         Button {
             tools.selectDeveloperIDE(ide)
+            diagnostics.refresh()
         } label: {
             if tools.selectedIDE == ide {
                 Label(ide.title, systemImage: "checkmark")
@@ -234,6 +249,13 @@ struct SettingsPane: View {
     }
 
     private func binding(_ keyPath: KeyPath<SystemFeatureStore, Bool>, setter: @escaping (Bool) -> Void) -> Binding<Bool> {
-        Binding(get: { features[keyPath: keyPath] }, set: setter)
+        Binding(
+            get: { features[keyPath: keyPath] },
+            set: {
+                setter($0)
+                diagnostics.refresh()
+            }
+        )
     }
+
 }

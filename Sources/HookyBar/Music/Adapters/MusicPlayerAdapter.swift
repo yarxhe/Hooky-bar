@@ -61,6 +61,7 @@ protocol MusicPlayerAdapter: AnyObject {
     func snapshot(from info: TrackInfo) -> MusicAdapterSnapshot?
     func directSnapshot(context: MusicCommandContext) -> MusicAdapterSnapshot?
     func playbackState() -> Bool?
+    func controlChannelAvailable() -> Bool?
     func ratingState(context: MusicCommandContext) -> MusicRatingState?
     func upcomingTrack(context: MusicCommandContext) -> UpcomingTrack?
 
@@ -127,6 +128,7 @@ extension MusicPlayerAdapter {
     }
 
     func playbackState() -> Bool? { nil }
+    func controlChannelAvailable() -> Bool? { nil }
     func ratingState(context: MusicCommandContext) -> MusicRatingState? { nil }
 
     func upcomingTrack(context: MusicCommandContext) -> UpcomingTrack? {

@@ -81,21 +81,30 @@ extension MusicStore {
         controlPulse += 1
         let adapter = activeAdapter
         let appIsActuallyRunning = adapter.isRunning()
+        if pendingPlaybackStartToken != nil {
+            // Повторный клик во время холодного старта не создаёт второй цикл
+            // команд. Он только снова активирует выбранный плеер и ускоряет
+            // уже существующее намерение воспроизведения.
+            openSelectedMusicApp()
+            resumePendingPlaybackStart()
+            return
+        }
         if !appIsActuallyRunning {
             isSelectedMusicAppRunning = false
             openSelectedMusicApp()
-            playSelectedSourceAfterLaunch()
+            beginPendingPlaybackStart()
             return
         }
         if !isSelectedMusicAppRunning {
             openSelectedMusicApp()
-            playSelectedSourceAfterLaunch()
+            beginPendingPlaybackStart()
             return
         }
         if currentTrackIdentity == nil {
-            playSelectedSourceAfterLaunch()
+            beginPendingPlaybackStart()
             return
         }
+        cancelPendingPlaybackStart()
         let source = selectedMusicSource
         let previous = nowPlaying.isPlaying
         let context = commandContext
@@ -114,50 +123,106 @@ extension MusicStore {
         }
     }
 
-    func playSelectedSourceAfterLaunch(attempt: Int = 0) {
+    func beginPendingPlaybackStart() {
+        cancelPendingPlaybackStart()
+        let token = UUID()
+        pendingPlaybackStartToken = token
+        pendingPlaybackStartDeadline = Date().addingTimeInterval(MusicStoreTiming.launchPlaybackTimeout)
+        schedulePendingPlaybackStart(token: token, delay: MusicStoreTiming.launchPlaybackDelay)
+    }
+
+    func resumePendingPlaybackStart() {
+        guard let token = pendingPlaybackStartToken else { return }
+        schedulePendingPlaybackStart(token: token, delay: 0.08)
+    }
+
+    func schedulePendingPlaybackStart(token: UUID, delay: TimeInterval) {
+        guard pendingPlaybackStartToken == token else { return }
+        pendingPlaybackStartWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.attemptPendingPlaybackStart(token: token)
+        }
+        pendingPlaybackStartWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    func attemptPendingPlaybackStart(token: UUID) {
+        guard pendingPlaybackStartToken == token else { return }
+        guard pendingPlaybackStartInFlightToken == nil else { return }
+        guard Date() < pendingPlaybackStartDeadline else {
+            cancelPendingPlaybackStart()
+            return
+        }
+        pendingPlaybackStartInFlightToken = token
         let source = selectedMusicSource
         let adapter = activeAdapter
-        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? MusicStoreTiming.launchPlaybackDelay : MusicStoreTiming.retryPlaybackDelay)) { [weak self] in
-            guard let self, self.selectedMusicSource == source else { return }
-            self.refreshMusicState()
-            let context = self.commandContext
-            executeAdapterCommand(
-                adapter: adapter,
-                context: context,
-                qos: .userInitiated,
-                requiresSameTrack: false,
-                command: { $0.startPlayback(context: $1) }
-            ) { [weak self] result in
-                guard let self, self.selectedMusicSource == source else { return }
-                if result.success {
-                    self.verifyPlaybackAfterLaunch(source: source, adapter: adapter, attempt: attempt)
-                } else if attempt < 14 {
-                    self.refreshMediaSnapshot()
-                    self.playSelectedSourceAfterLaunch(attempt: attempt + 1)
-                }
+        refreshMusicState()
+        let context = commandContext
+        executeAdapterCommand(
+            adapter: adapter,
+            context: context,
+            qos: .userInitiated,
+            requiresSameTrack: false,
+            command: { $0.startPlayback(context: $1) }
+        ) { [weak self] result in
+            guard let self else { return }
+            if self.pendingPlaybackStartInFlightToken == token {
+                self.pendingPlaybackStartInFlightToken = nil
+            }
+            guard self.selectedMusicSource == source,
+                  self.pendingPlaybackStartToken == token else { return }
+            if result.success {
+                self.verifyPendingPlaybackStart(source: source, adapter: adapter, token: token)
+            } else {
+                self.refreshMediaSnapshot()
+                self.schedulePendingPlaybackStart(
+                    token: token,
+                    delay: MusicStoreTiming.retryPlaybackDelay
+                )
             }
         }
     }
 
-    func verifyPlaybackAfterLaunch(source: MusicSource, adapter: any MusicPlayerAdapter, attempt: Int) {
+    func verifyPendingPlaybackStart(
+        source: MusicSource,
+        adapter: any MusicPlayerAdapter,
+        token: UUID
+    ) {
         refreshMediaSnapshot()
         DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.postCommandSnapshotDelay) { [weak self] in
-            guard let self, self.selectedMusicSource == source else { return }
+            guard let self,
+                  self.selectedMusicSource == source,
+                  self.pendingPlaybackStartToken == token else { return }
             let context = self.commandContext
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 let snapshot = adapter.directSnapshot(context: context)
                 let playing = snapshot?.isPlaying ?? adapter.playbackState()
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.selectedMusicSource == source else { return }
+                    guard let self,
+                          self.selectedMusicSource == source,
+                          self.pendingPlaybackStartToken == token else { return }
                     self.refreshMusicState()
                     self.refreshMediaSnapshot()
                     if let snapshot { self.applyAdapterSnapshot(snapshot, marksSystemOwnership: false) }
-                    if playing != true, attempt < 14 {
-                        self.playSelectedSourceAfterLaunch(attempt: attempt + 1)
+                    if playing == true {
+                        self.cancelPendingPlaybackStart()
+                    } else {
+                        self.schedulePendingPlaybackStart(
+                            token: token,
+                            delay: MusicStoreTiming.retryPlaybackDelay
+                        )
                     }
                 }
             }
         }
+    }
+
+    func cancelPendingPlaybackStart() {
+        pendingPlaybackStartWorkItem?.cancel()
+        pendingPlaybackStartWorkItem = nil
+        pendingPlaybackStartToken = nil
+        pendingPlaybackStartInFlightToken = nil
+        pendingPlaybackStartDeadline = .distantPast
     }
 
     func previousTrack() {

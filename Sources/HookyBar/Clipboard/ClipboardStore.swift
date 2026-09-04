@@ -12,18 +12,25 @@ final class ClipboardStore: ObservableObject {
     private var itemsBySource: [String: [ClipboardItem]] = [:]
     private var hiddenIDs: Set<String> = []
     private var isMonitoring = false
+    private var cleanupTimer: Timer?
+    private let retentionPolicy: ClipboardRetentionPolicy
     private let pinnedDefaultsKey = "HookyBar.clipboard.pinnedIDs"
 
-    init(adapters: [ClipboardSourceAdapter] = [
-        SystemTextClipboardAdapter(),
-        ScreenshotClipboardAdapter()
-    ]) {
+    init(
+        adapters: [ClipboardSourceAdapter] = [
+            SystemTextClipboardAdapter(),
+            ScreenshotClipboardAdapter()
+        ],
+        retentionPolicy: ClipboardRetentionPolicy = .standard
+    ) {
         self.adapters = adapters
+        self.retentionPolicy = retentionPolicy
         self.pinnedIDs = Set(UserDefaults.standard.stringArray(forKey: pinnedDefaultsKey) ?? [])
     }
 
     var textCount: Int { items.lazy.filter { $0.kind == .text }.count }
     var screenshotCount: Int { items.lazy.filter { $0.kind == .screenshot }.count }
+    var hasClearableItems: Bool { items.contains { !pinnedIDs.contains($0.id) } }
     var sourceCapabilities: [IntegrationCapabilityDeclaration] {
         adapters.map(\.capability).sorted { $0.id < $1.id }
     }
@@ -34,10 +41,19 @@ final class ClipboardStore: ObservableObject {
         for adapter in adapters {
             start(adapter)
         }
+        cleanupTimer?.invalidate()
+        cleanupTimer = Timer.scheduledTimer(
+            withTimeInterval: retentionPolicy.cleanupInterval,
+            repeats: true
+        ) { [weak self] _ in
+            self?.pruneHistory(referenceDate: Date())
+        }
     }
 
     func stopMonitoring() {
         adapters.forEach { $0.stop() }
+        cleanupTimer?.invalidate()
+        cleanupTimer = nil
         isMonitoring = false
     }
 
@@ -74,15 +90,23 @@ final class ClipboardStore: ObservableObject {
     }
 
     func remove(_ item: ClipboardItem) {
-        hiddenIDs.insert(item.id)
         pinnedIDs.remove(item.id)
         persistPinnedIDs()
-        _ = adapters.first(where: { $0.id == item.sourceID })?.remove(item)
-        rebuildItems()
+        removeItems([item])
+    }
+
+    /// Очищает только историю Hooky bar. Текущий системный clipboard,
+    /// закреплённые элементы и файлы скриншотов остаются нетронутыми.
+    @discardableResult
+    func clearUnpinnedHistory() -> Int {
+        let removable = items.filter { !pinnedIDs.contains($0.id) }
+        removeItems(removable)
+        return removable.count
     }
 
     private func accept(_ update: ClipboardAdapterUpdate) {
         itemsBySource[update.sourceID] = update.items
+        pruneHistory(referenceDate: Date())
         rebuildItems()
         if update.insertedItem?.kind == .screenshot, let url = update.insertedItem?.fileURL {
             onNewScreenshot?(url)
@@ -100,6 +124,30 @@ final class ClipboardStore: ObservableObject {
             .flatMap { $0 }
             .filter { !hiddenIDs.contains($0.id) }
             .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private func pruneHistory(referenceDate: Date) {
+        let visibleItems = itemsBySource.values
+            .flatMap { $0 }
+            .filter { !hiddenIDs.contains($0.id) }
+        removeItems(retentionPolicy.itemsToRemove(
+            from: visibleItems,
+            pinnedIDs: pinnedIDs,
+            referenceDate: referenceDate
+        ))
+    }
+
+    private func removeItems<S: Sequence>(_ removedItems: S) where S.Element == ClipboardItem {
+        let removed = Array(removedItems)
+        guard !removed.isEmpty else { return }
+
+        let removedIDs = Set(removed.map(\.id))
+        hiddenIDs.formUnion(removedIDs)
+        for (sourceID, sourceItems) in Dictionary(grouping: removed, by: \.sourceID) {
+            itemsBySource[sourceID]?.removeAll { removedIDs.contains($0.id) }
+            _ = adapters.first(where: { $0.id == sourceID })?.remove(sourceItems)
+        }
+        rebuildItems()
     }
 
     private func persistPinnedIDs() {
