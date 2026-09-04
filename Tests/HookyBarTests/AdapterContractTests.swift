@@ -220,6 +220,29 @@ struct AdapterContractTests {
         #expect(Set(removed.map(\.id)) == ["overflow", "expired"])
     }
 
+    @Test @MainActor func clipboardClearUsesOneBatchAdapterOperation() async throws {
+        let adapter = ClipboardAdapterDouble(items: [
+            clipboardItem(id: "first", createdAt: Date()),
+            clipboardItem(id: "second", createdAt: Date())
+        ])
+        let store = ClipboardStore(
+            adapters: [adapter],
+            retentionPolicy: ClipboardRetentionPolicy(
+                maximumUnpinnedItems: 10,
+                maximumAge: 1_000,
+                cleanupInterval: 60
+            )
+        )
+        store.startMonitoring()
+        defer { store.stopMonitoring() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(store.items.count == 2)
+        #expect(store.clearUnpinnedHistory() == 2)
+        #expect(store.items.isEmpty)
+        #expect(adapter.batchRemoveCount == 1)
+    }
+
     @Test func integrationDiagnosticsExposeDeniedPermissionWithoutRequestingIt() throws {
         let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
             calendar: .denied,
@@ -315,6 +338,48 @@ private func diagnosticsContext(
         selectedIDEInstalled: true,
         githubCLIAvailable: true
     )
+}
+
+private final class ClipboardAdapterDouble: ClipboardSourceAdapter {
+    let id = "test.clipboard"
+    let displayName = "Tests"
+    let capability = IntegrationCapabilityDeclaration(id: "test.clipboard")
+    private var items: [ClipboardItem]
+    private var receive: ((ClipboardAdapterUpdate) -> Void)?
+    private(set) var batchRemoveCount = 0
+
+    init(items: [ClipboardItem]) {
+        self.items = items
+    }
+
+    func start(receive: @escaping (ClipboardAdapterUpdate) -> Void) {
+        self.receive = receive
+        publish()
+    }
+
+    func stop() {
+        receive = nil
+    }
+
+    func copy(_ item: ClipboardItem) -> IntegrationResult { .success }
+
+    func remove(_ item: ClipboardItem) -> IntegrationResult {
+        items.removeAll { $0.id == item.id }
+        publish()
+        return .success
+    }
+
+    func remove(_ removedItems: [ClipboardItem]) -> IntegrationResult {
+        batchRemoveCount += 1
+        let ids = Set(removedItems.map(\.id))
+        items.removeAll { ids.contains($0.id) }
+        publish()
+        return .success
+    }
+
+    private func publish() {
+        receive?(ClipboardAdapterUpdate(sourceID: id, items: items, insertedItem: nil))
+    }
 }
 
 private final class NotesAdapterDouble: NotesAppAdapter {

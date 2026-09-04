@@ -147,10 +147,16 @@ struct ClipboardPane: View {
                     Image(systemName: state.historyCleared ? "checkmark" : "trash")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(state.historyCleared ? .green : .white.opacity(0.46))
-                        .frame(width: 20, height: 20)
                         .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 28, height: 24)
+                        .background(
+                            Color.white.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .disabled(!clipboard.hasClearableItems)
                 .help(L10n.tr(
                     state.historyCleared
