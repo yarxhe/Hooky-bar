@@ -18,9 +18,10 @@ enum MusicStoreTiming {
     static let recoverySnapshotDelay: TimeInterval = 1.5
     static let navigationRefreshDelay: TimeInterval = 0.3
     static let likeRecoveryDelay: TimeInterval = 0.35
-    static let launchPlaybackDelay: TimeInterval = 0.65
-    static let retryPlaybackDelay: TimeInterval = 0.45
-    static let postCommandSnapshotDelay: TimeInterval = 0.65
+    static let launchPlaybackDelay: TimeInterval = 0.45
+    static let retryPlaybackDelay: TimeInterval = 0.35
+    static let postCommandSnapshotDelay: TimeInterval = 0.45
+    static let launchPlaybackTimeout: TimeInterval = 25
     static let manualTrackIgnoreElapsedInterval: TimeInterval = 1.2
 }
 
@@ -41,6 +42,7 @@ final class MusicStore: ObservableObject {
             expectedPlaybackState = nil
             playbackOverrideUntil = .distantPast
             playbackCommandGeneration += 1
+            cancelPendingPlaybackStart()
             lastLikeStateRefresh = .distantPast
             lastUpcomingRefresh = .distantPast
             refreshMusicState()
@@ -76,6 +78,10 @@ final class MusicStore: ObservableObject {
     var expectedPlaybackState: Bool?
     var playbackOverrideUntil = Date.distantPast
     var playbackCommandGeneration = 0
+    var pendingPlaybackStartToken: UUID?
+    var pendingPlaybackStartInFlightToken: UUID?
+    var pendingPlaybackStartDeadline = Date.distantPast
+    var pendingPlaybackStartWorkItem: DispatchWorkItem?
     var manualTrackChangePending = false
     var ignoreRemoteElapsedUntil = Date.distantPast
     var adapterHasProvidedTrack = false
@@ -85,7 +91,7 @@ final class MusicStore: ObservableObject {
     var isRecoveringPlayback = false
     var lastPlaybackRecovery = Date.distantPast
     var currentTrackIdentity: String?
-    let adapterRegistry = MusicAdapterRegistry()
+    let adapterRegistry: MusicAdapterRegistry
 
     var activeAdapter: any MusicPlayerAdapter {
         adapterRegistry.adapter(for: selectedMusicSource)
@@ -95,7 +101,8 @@ final class MusicStore: ObservableObject {
         MusicCommandContext(ownsSystemMedia: selectedSourceOwnsSystemMedia)
     }
 
-    init() {
+    init(adapterRegistry: MusicAdapterRegistry = MusicAdapterRegistry()) {
+        self.adapterRegistry = adapterRegistry
         let saved = UserDefaults.standard.string(forKey: MusicStoreDefaultsKey.selectedMusicSource.rawValue)
         selectedMusicSource = MusicSource(rawValue: saved ?? "") ?? .yandex
         nowPlaying = NowPlayingSnapshot(artist: selectedMusicSource.fullTitle)
@@ -130,6 +137,9 @@ final class MusicStore: ObservableObject {
                         as? NSRunningApplication,
                       application.bundleIdentifier == self.selectedMusicSource.bundleIdentifier else { return }
                 self.refreshMusicState()
+                if name == NSWorkspace.didLaunchApplicationNotification {
+                    self.resumePendingPlaybackStart()
+                }
             }
         }
     }
@@ -182,6 +192,7 @@ final class MusicStore: ObservableObject {
         workspaceObservers.forEach(center.removeObserver)
         workspaceObservers.removeAll()
         adapterRegistry.stopListening()
+        cancelPendingPlaybackStart()
     }
 
     func tickPlaybackClock() {

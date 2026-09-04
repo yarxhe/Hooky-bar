@@ -73,6 +73,24 @@ struct AdapterContractTests {
         #expect(store.artworkPresentationRevision == initialArtworkRevision + 1)
     }
 
+    @Test func coldMusicLaunchKeepsOnePlayIntentUntilPlaybackIsConfirmed() async throws {
+        let store = MusicStore()
+        let adapter = ColdLaunchMusicAdapterDouble(
+            source: .spotify,
+            mediaController: store.activeAdapter.mediaController,
+            failuresBeforeReady: 2
+        )
+        store.adapterRegistry.register(adapter)
+        store.selectedMusicSource = .spotify
+
+        store.togglePlayback()
+        try await Task.sleep(for: .seconds(2.5))
+
+        #expect(adapter.launchCount == 1)
+        #expect(adapter.startPlaybackCount == 3)
+        #expect(store.pendingPlaybackStartToken == nil)
+    }
+
     @Test func systemEventAdapterIsStartedThroughStoreRegistry() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: "feature.vpn")
@@ -209,5 +227,75 @@ private final class SystemEventAdapterDouble: SystemEventAdapter {
 
     func stop() {
         stopCount += 1
+    }
+}
+
+private final class ColdLaunchMusicAdapterDouble: MusicPlayerAdapter {
+    let source: MusicSource
+    let mediaController: MediaController
+    let capabilities = MusicAdapterCapabilities(
+        canLike: false,
+        canDislike: false,
+        canSeek: false,
+        canReadUpcomingTrack: false
+    )
+
+    private let lock = NSLock()
+    private let failuresBeforeReady: Int
+    private var running = false
+    private var playing = false
+    private var launches = 0
+    private var starts = 0
+
+    init(
+        source: MusicSource,
+        mediaController: MediaController,
+        failuresBeforeReady: Int
+    ) {
+        self.source = source
+        self.mediaController = mediaController
+        self.failuresBeforeReady = failuresBeforeReady
+    }
+
+    var launchCount: Int { locked { launches } }
+    var startPlaybackCount: Int { locked { starts } }
+
+    func isRunning() -> Bool { locked { running } }
+
+    func launch() {
+        locked {
+            launches += 1
+            running = true
+        }
+    }
+
+    func snapshot(from info: TrackInfo) -> MusicAdapterSnapshot? { nil }
+    func directSnapshot(context: MusicCommandContext) -> MusicAdapterSnapshot? { nil }
+    func playbackState() -> Bool? { locked { playing } }
+    func ratingState(context: MusicCommandContext) -> MusicRatingState? { nil }
+    func upcomingTrack(context: MusicCommandContext) -> UpcomingTrack? { nil }
+
+    func startPlayback(context: MusicCommandContext) -> MusicAdapterResult {
+        locked {
+            starts += 1
+            guard starts > failuresBeforeReady else {
+                return .failure(.adapterUnavailable)
+            }
+            playing = true
+            return .success
+        }
+    }
+
+    func togglePlayback(context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func nextTrack(context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func previousTrack(context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func seek(to seconds: Double, context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func setLiked(_ desired: Bool, context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+    func setDisliked(_ desired: Bool, context: MusicCommandContext) -> MusicAdapterResult { .failure(.notSupported) }
+
+    private func locked<T>(_ operation: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return operation()
     }
 }
