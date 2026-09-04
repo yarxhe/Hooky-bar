@@ -28,6 +28,8 @@
 "clipboard.empty" = "Буфер пока пуст";
 "clipboard.noResults" = "Ничего не найдено";
 "clipboard.copy" = "Копировать";
+"clipboard.clearHistory" = "Очистить историю; закреплённое останется";
+"clipboard.historyCleared" = "История очищена";
 
 "settings.language.title" = "Язык";
 "settings.language.subtitle" = "Как в macOS или отдельно для приложения";

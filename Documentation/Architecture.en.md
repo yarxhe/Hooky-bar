@@ -105,6 +105,8 @@ External source
 
 The clipboard follows this flow: every source publishes a full snapshot of its items and, when available, a separate newly inserted item.
 
+`ClipboardRetentionPolicy` bounds the shared history to 48 unpinned items and 24 hours. Pinned items do not count toward the limit. Automatic and manual cleanup pass items to their source adapters in one batch operation; the system clipboard and original screenshot files are never deleted.
+
 ## State and identity
 
 - Adapter identifiers must remain stable between launches.

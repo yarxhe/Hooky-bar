@@ -197,6 +197,29 @@ struct AdapterContractTests {
         ]))
     }
 
+    @Test func clipboardRetentionKeepsPinsAndBoundsHistory() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let policy = ClipboardRetentionPolicy(
+            maximumUnpinnedItems: 1,
+            maximumAge: 100,
+            cleanupInterval: 60
+        )
+        let items = [
+            clipboardItem(id: "latest", createdAt: now.addingTimeInterval(-1)),
+            clipboardItem(id: "overflow", createdAt: now.addingTimeInterval(-2)),
+            clipboardItem(id: "expired", createdAt: now.addingTimeInterval(-200)),
+            clipboardItem(id: "pinned-expired", createdAt: now.addingTimeInterval(-300))
+        ]
+
+        let removed = policy.itemsToRemove(
+            from: items,
+            pinnedIDs: ["pinned-expired"],
+            referenceDate: now
+        )
+
+        #expect(Set(removed.map(\.id)) == ["overflow", "expired"])
+    }
+
     @Test func integrationDiagnosticsExposeDeniedPermissionWithoutRequestingIt() throws {
         let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
             calendar: .denied,
@@ -248,6 +271,19 @@ struct AdapterContractTests {
         #expect(!report.contains("/Users/"))
         #expect(!report.contains(NSHomeDirectory()))
     }
+}
+
+private func clipboardItem(id: String, createdAt: Date) -> ClipboardItem {
+    ClipboardItem(
+        id: id,
+        sourceID: "test.clipboard",
+        sourceName: "Tests",
+        sourceBundleIdentifier: nil,
+        kind: .text,
+        text: id,
+        fileURL: nil,
+        createdAt: createdAt
+    )
 }
 
 private func diagnosticsContext(

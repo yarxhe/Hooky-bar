@@ -32,12 +32,24 @@ private final class ClipboardPaneState: ObservableObject {
     @Published var filter: ClipboardFilter = .all
     @Published var copiedID: String?
     @Published var controlsCompact = false
+    @Published var historyCleared = false
+    private var clearFeedbackGeneration = 0
 
     func updateScrollOffset(_ offset: CGFloat) {
         if !controlsCompact, offset > 18 {
             controlsCompact = true
         } else if controlsCompact, offset < 5 {
             controlsCompact = false
+        }
+    }
+
+    func showHistoryCleared() {
+        clearFeedbackGeneration &+= 1
+        let generation = clearFeedbackGeneration
+        withAnimation(.easeOut(duration: 0.16)) { historyCleared = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, generation == self.clearFeedbackGeneration else { return }
+            withAnimation(.easeOut(duration: 0.16)) { self.historyCleared = false }
         }
     }
 }
@@ -128,6 +140,24 @@ struct ClipboardPane: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Button {
+                    guard clipboard.clearUnpinnedHistory() > 0 else { return }
+                    state.showHistoryCleared()
+                } label: {
+                    Image(systemName: state.historyCleared ? "checkmark" : "trash")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(state.historyCleared ? .green : .white.opacity(0.46))
+                        .frame(width: 20, height: 20)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .disabled(!clipboard.hasClearableItems)
+                .help(L10n.tr(
+                    state.historyCleared
+                        ? "clipboard.historyCleared"
+                        : "clipboard.clearHistory"
+                ))
+                .accessibilityLabel(L10n.tr("clipboard.clearHistory"))
             }
             .padding(.horizontal, 10)
             .frame(height: state.controlsCompact ? 25 : 28)

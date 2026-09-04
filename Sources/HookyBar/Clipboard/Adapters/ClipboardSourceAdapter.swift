@@ -16,4 +16,15 @@ protocol ClipboardSourceAdapter: AnyObject {
     func stop()
     func copy(_ item: ClipboardItem) -> IntegrationResult
     func remove(_ item: ClipboardItem) -> IntegrationResult
+    func remove(_ items: [ClipboardItem]) -> IntegrationResult
+}
+
+extension ClipboardSourceAdapter {
+    func remove(_ items: [ClipboardItem]) -> IntegrationResult {
+        for item in items {
+            let result = remove(item)
+            if !result.succeeded { return result }
+        }
+        return .success
+    }
 }

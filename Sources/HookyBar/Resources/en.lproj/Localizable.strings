@@ -28,6 +28,8 @@
 "clipboard.empty" = "Clipboard is empty";
 "clipboard.noResults" = "Nothing found";
 "clipboard.copy" = "Copy";
+"clipboard.clearHistory" = "Clear history; pinned items will remain";
+"clipboard.historyCleared" = "History cleared";
 
 "settings.language.title" = "Language";
 "settings.language.subtitle" = "Follow macOS or choose the app language";
