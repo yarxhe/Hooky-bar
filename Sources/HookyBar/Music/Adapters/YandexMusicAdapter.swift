@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import MediaRemoteAdapter
 
 final class YandexMusicAdapter: MusicPlayerAdapter {
@@ -44,6 +45,11 @@ final class YandexMusicAdapter: MusicPlayerAdapter {
 
     func playbackState() -> Bool? {
         cdp.playbackState() ?? accessibility.playbackState()
+    }
+
+    func controlChannelAvailable() -> Bool? {
+        guard isRunning() else { return false }
+        return cdp.isAvailable() || AXIsProcessTrusted()
     }
 
     func ratingState(context: MusicCommandContext) -> MusicRatingState? {

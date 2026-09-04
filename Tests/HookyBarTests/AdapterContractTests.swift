@@ -196,6 +196,73 @@ struct AdapterContractTests {
             .init("org.nspasteboard.TransientType")
         ]))
     }
+
+    @Test func integrationDiagnosticsExposeDeniedPermissionWithoutRequestingIt() throws {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
+            calendar: .denied,
+            calendarEnabled: true
+        ))
+        let calendar = try #require(items.first { $0.id == "system.calendar" })
+
+        #expect(calendar.status == .needsAttention)
+        #expect(calendar.settingsPermission == .calendar)
+    }
+
+    @Test func integrationDiagnosticsKeepDisabledFeaturesInactive() throws {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
+            bluetooth: .denied,
+            bluetoothEnabled: false,
+            airDropEnabled: false
+        ))
+        let bluetooth = try #require(items.first { $0.id == "system.bluetooth" })
+        let airDrop = try #require(items.first { $0.id == "system.airdrop" })
+
+        #expect(bluetooth.status == .inactive)
+        #expect(bluetooth.settingsPermission == nil)
+        #expect(airDrop.status == .inactive)
+    }
+
+    @Test func yandexDiagnosticsRequireFallbackOnlyWhenControlChannelIsUnavailable() throws {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext(
+            musicControlChannelAvailable: false,
+            accessibility: .notDetermined
+        ))
+        let controls = try #require(items.first { $0.id == "music.yandex.controls" })
+
+        #expect(controls.status == .checkedOnUse)
+        #expect(controls.settingsPermission == .accessibility)
+    }
+}
+
+private func diagnosticsContext(
+    musicControlChannelAvailable: Bool? = true,
+    accessibility: IntegrationAuthorizationState = .granted,
+    calendar: IntegrationAuthorizationState = .granted,
+    bluetooth: IntegrationAuthorizationState = .granted,
+    calendarEnabled: Bool = true,
+    bluetoothEnabled: Bool = true,
+    airDropEnabled: Bool = true
+) -> IntegrationDiagnosticsContext {
+    IntegrationDiagnosticsContext(
+        musicSource: .yandex,
+        musicInstalled: true,
+        musicRunning: true,
+        musicControlChannelAvailable: musicControlChannelAvailable,
+        notesApp: .obsidian,
+        notesInstalled: true,
+        accessibility: accessibility,
+        calendar: calendar,
+        bluetooth: bluetooth,
+        screenshotsFolder: .granted,
+        downloadsFolder: .granted,
+        calendarEnabled: calendarEnabled,
+        bluetoothEnabled: bluetoothEnabled,
+        airDropEnabled: airDropEnabled,
+        developerModeEnabled: false,
+        selectedIDE: .visualStudioCode,
+        selectedIDEInstalled: true,
+        githubCLIAvailable: true
+    )
 }
 
 private final class NotesAdapterDouble: NotesAppAdapter {

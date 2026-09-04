@@ -15,7 +15,8 @@ This document describes the architecture of the current application. Planned pub
 ┌───────────────────────▼─────────────────────────────┐
 │ Stores                                              │
 │ MusicStore · ClipboardStore · NotesStore · ToolsStore│
-│ SystemFeatureStore · InterfaceModel                 │
+│ SystemFeatureStore · IntegrationDiagnosticsStore    │
+│ InterfaceModel                                      │
 └───────────────────────┬─────────────────────────────┘
                         │ internal contracts
 ┌───────────────────────▼─────────────────────────────┐
@@ -63,6 +64,7 @@ Root dependencies are created in `AppDelegate`:
 - `ToolsStore`;
 - `VolumeStore`;
 - `SystemFeatureStore`;
+- `IntegrationDiagnosticsStore`;
 - `InterfaceModel`;
 - `AppLocalization`.
 
@@ -122,6 +124,12 @@ Track identity is currently derived from normalized title and artist. When ident
 - Adapter callbacks must not strongly retain their store.
 - Event-driven system APIs are preferred over idle polling.
 
+## Integration diagnostics
+
+`IntegrationDiagnosticsStore` builds one status snapshot for music, notes, system features, and developer tools through `IntegrationDiagnosticsAdapter`. Potentially slow CDP, GitHub CLI, and system-permission checks run away from the main queue; a late result from an outdated refresh is discarded.
+
+Diagnostics only read existing state and never trigger a system permission prompt. macOS Settings opens only after an explicit user action. macOS does not expose a reliable non-invasive Automation authorization check before first use, so that permission is reported as “checked on use.”
+
 ## Panel geometry
 
 `InterfaceModel` manages transitions, while `HookySurfaceLayout` is the single geometry source for both SwiftUI and AppKit hit testing. An integration must not resize the `NSPanel` itself. It sends an event or state to the host, and the host selects an existing surface mode.
@@ -143,6 +151,7 @@ This constraint is especially important for the SDK: extensions must not introdu
 Sources/HookyBar/
 ├── App/          composition root and NSPanel
 ├── Clipboard/    source models, adapters, and store
+├── Integration/  external-app and system-access diagnostics
 ├── Interface/    geometry, theme, and motion
 ├── Localization/ application language and string resources
 ├── Models/       shared models of the current executable target

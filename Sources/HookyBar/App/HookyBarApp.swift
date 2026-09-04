@@ -20,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ui = InterfaceModel()
     private let features = SystemFeatureStore()
     private let localization = AppLocalization()
+    private lazy var diagnostics = IntegrationDiagnosticsStore(
+        music: music,
+        notes: notes,
+        tools: tools,
+        features: features
+    )
     private var subscriptions = Set<AnyCancellable>()
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
@@ -261,8 +267,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
+        diagnostics.refresh()
         if settingsWindow == nil {
-            let content = NSHostingView(rootView: SettingsPane(store: music, notes: notes, tools: tools, features: features, localization: localization))
+            let content = NSHostingView(rootView: SettingsPane(
+                store: music,
+                notes: notes,
+                tools: tools,
+                features: features,
+                localization: localization,
+                diagnostics: diagnostics
+            ))
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 430, height: 520),
                 styleMask: [.titled, .closable],
@@ -295,6 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         music.refreshLocalizedContent()
         notes.refreshLocalizedContent()
         tools.refreshLocalizedContent()
+        diagnostics.refreshLocalizedContent()
     }
 
     private var hasCompactContent: Bool {

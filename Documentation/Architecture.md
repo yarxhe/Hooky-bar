@@ -15,7 +15,8 @@
 ┌───────────────────────▼─────────────────────────────┐
 │ Stores                                              │
 │ MusicStore · ClipboardStore · NotesStore · ToolsStore│
-│ SystemFeatureStore · InterfaceModel                 │
+│ SystemFeatureStore · IntegrationDiagnosticsStore    │
+│ InterfaceModel                                      │
 └───────────────────────┬─────────────────────────────┘
                         │ внутренние контракты
 ┌───────────────────────▼─────────────────────────────┐
@@ -63,7 +64,8 @@ SwiftUI-представления читают опубликованное с�
 - `ToolsStore`;
 - `VolumeStore`;
 - `SystemFeatureStore`;
-- `InterfaceModel`.
+- `IntegrationDiagnosticsStore`;
+- `InterfaceModel`;
 - `AppLocalization`.
 
 Они живут столько же, сколько процесс приложения. Мониторинг запускается в `applicationDidFinishLaunching` и останавливается в `applicationWillTerminate`.
@@ -120,6 +122,13 @@ External source
 - Polling должен иметь ограниченную частоту и прекращаться вместе со стором.
 - Наблюдатели обязаны быть идемпотентными: повторный `start` не создаёт второй watcher или timer.
 - Callback адаптера не должен удерживать store сильной ссылкой.
+- Событийные системные API предпочтительнее фонового polling.
+
+## Диагностика интеграций
+
+`IntegrationDiagnosticsStore` формирует единый снимок состояния музыки, заметок, системных функций и developer-инструментов через `IntegrationDiagnosticsAdapter`. Потенциально медленные проверки CDP, GitHub CLI и системных доступов выполняются вне главной очереди; поздний результат устаревшей проверки отбрасывается.
+
+Диагностика только читает уже доступное состояние и сама не вызывает системные запросы разрешений. Переход в настройки macOS выполняется только по явному нажатию пользователя. Для Automation macOS не предоставляет надёжную неинвазивную проверку до первого обращения, поэтому этот доступ обозначается как «проверяется при использовании».
 
 ## Геометрия панели
 
@@ -142,6 +151,7 @@ External source
 Sources/HookyBar/
 ├── App/          composition root и NSPanel
 ├── Clipboard/    модели источников, адаптеры и store
+├── Integration/  диагностика внешних приложений и системных доступов
 ├── Interface/    геометрия, тема и motion
 ├── Localization/ язык приложения и доступ к строковым ресурсам
 ├── Models/       общие модели текущего executable target
