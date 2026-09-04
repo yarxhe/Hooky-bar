@@ -14,6 +14,23 @@ struct IntegrationDiagnosticsSection: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button(action: diagnostics.copyReport) {
+                    Image(systemName: diagnostics.reportCopied ? "checkmark" : "doc.on.doc")
+                        .foregroundStyle(diagnostics.reportCopied ? .green : .primary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.borderless)
+                .disabled(diagnostics.items.isEmpty || diagnostics.isRefreshing)
+                .help(L10n.tr(
+                    diagnostics.reportCopied
+                        ? "settings.diagnostics.reportCopied"
+                        : "settings.diagnostics.copyReport"
+                ))
+                .accessibilityLabel(L10n.tr(
+                    diagnostics.reportCopied
+                        ? "settings.diagnostics.reportCopied"
+                        : "settings.diagnostics.copyReport"
+                ))
                 Button(action: diagnostics.refresh) {
                     Image(systemName: "arrow.clockwise")
                         .rotationEffect(.degrees(diagnostics.isRefreshing ? 360 : 0))

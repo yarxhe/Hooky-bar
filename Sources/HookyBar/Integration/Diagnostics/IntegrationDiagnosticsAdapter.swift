@@ -8,11 +8,12 @@ protocol IntegrationDiagnosticsAdapter {
     func isApplicationInstalled(bundleIdentifier: String) -> Bool
     func authorization(for permission: IntegrationPermission) -> IntegrationAuthorizationState
     func isExecutableAvailable(at paths: [String]) -> Bool
+    func copyTextToClipboard(_ text: String) -> Bool
     func openSystemSettings(for permission: IntegrationPermission)
 }
 
-/// Выполняет только read-only проверки. Диагностика никогда сама не вызывает
-/// системный prompt и не получает доступ от имени пользователя.
+/// Проверки только читают состояние. Запись в буфер и переход в настройки
+/// выполняются исключительно после явного действия пользователя.
 struct SystemIntegrationDiagnosticsAdapter: IntegrationDiagnosticsAdapter {
     func isApplicationInstalled(bundleIdentifier: String) -> Bool {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) != nil
@@ -45,6 +46,12 @@ struct SystemIntegrationDiagnosticsAdapter: IntegrationDiagnosticsAdapter {
 
     func isExecutableAvailable(at paths: [String]) -> Bool {
         paths.contains { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    func copyTextToClipboard(_ text: String) -> Bool {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        return pasteboard.setString(text, forType: .string)
     }
 
     func openSystemSettings(for permission: IntegrationPermission) {

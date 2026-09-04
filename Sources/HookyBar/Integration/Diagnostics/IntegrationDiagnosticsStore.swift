@@ -4,6 +4,7 @@ import Foundation
 final class IntegrationDiagnosticsStore: ObservableObject {
     @Published private(set) var items: [IntegrationDiagnosticItem] = []
     @Published private(set) var isRefreshing = false
+    @Published private(set) var reportCopied = false
 
     private let music: MusicStore
     private let notes: NotesStore
@@ -11,6 +12,7 @@ final class IntegrationDiagnosticsStore: ObservableObject {
     private let features: SystemFeatureStore
     private let adapter: any IntegrationDiagnosticsAdapter
     private var refreshGeneration = 0
+    private var copyFeedbackGeneration = 0
 
     init(
         music: MusicStore,
@@ -30,6 +32,7 @@ final class IntegrationDiagnosticsStore: ObservableObject {
         refreshGeneration &+= 1
         let generation = refreshGeneration
         isRefreshing = true
+        reportCopied = false
 
         // Снимок настроек берём на главном потоке, а потенциально медленные
         // проверки CDP, GitHub CLI и системных доступов выполняем в фоне.
@@ -87,7 +90,35 @@ final class IntegrationDiagnosticsStore: ObservableObject {
         adapter.openSystemSettings(for: permission)
     }
 
+    func copyReport() {
+        guard !items.isEmpty else { return }
+        let report = IntegrationDiagnosticsReportBuilder.makeReport(
+            items: items,
+            appVersion: appVersion,
+            operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString
+        )
+        guard adapter.copyTextToClipboard(report) else { return }
+
+        copyFeedbackGeneration &+= 1
+        let generation = copyFeedbackGeneration
+        reportCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            guard let self, generation == self.copyFeedbackGeneration else { return }
+            self.reportCopied = false
+        }
+    }
+
     func refreshLocalizedContent() {
         refresh()
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        switch (version, build) {
+        case let (.some(version), .some(build)): return "\(version) (\(build))"
+        case let (.some(version), .none): return version
+        default: return "development"
+        }
     }
 }

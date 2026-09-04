@@ -130,6 +130,8 @@ Track identity is currently derived from normalized title and artist. When ident
 
 Diagnostics only read existing state and never trigger a system permission prompt. macOS Settings opens only after an explicit user action. macOS does not expose a reliable non-invasive Automation authorization check before first use, so that permission is reported as “checked on use.”
 
+A separate pure builder creates the diagnostics report, which is copied through the adapter only after the user presses the button. The report contains the app version, macOS version, and integration states; paths, clipboard contents, and media metadata are excluded.
+
 ## Panel geometry
 
 `InterfaceModel` manages transitions, while `HookySurfaceLayout` is the single geometry source for both SwiftUI and AppKit hit testing. An integration must not resize the `NSPanel` itself. It sends an event or state to the host, and the host selects an existing surface mode.

@@ -34,6 +34,8 @@
 "settings.diagnostics.title" = "Диагностика интеграций";
 "settings.diagnostics.subtitle" = "Доступы и внешние приложения без лишних системных запросов";
 "settings.diagnostics.refresh" = "Проверить снова";
+"settings.diagnostics.copyReport" = "Скопировать отчёт";
+"settings.diagnostics.reportCopied" = "Отчёт скопирован";
 "settings.diagnostics.openSettings" = "Настройки…";
 "settings.diagnostics.status.ready" = "Готово";
 "settings.diagnostics.status.attention" = "Нужен доступ";

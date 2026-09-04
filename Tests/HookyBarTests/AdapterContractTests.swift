@@ -232,6 +232,22 @@ struct AdapterContractTests {
         #expect(controls.status == .checkedOnUse)
         #expect(controls.settingsPermission == .accessibility)
     }
+
+    @Test func diagnosticsReportContainsOnlyShareableEnvironmentState() {
+        let items = IntegrationDiagnosticsBuilder.makeItems(from: diagnosticsContext())
+        let report = IntegrationDiagnosticsReportBuilder.makeReport(
+            items: items,
+            appVersion: "1.3.0 (4)",
+            operatingSystem: "macOS 15.0",
+            generatedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        #expect(report.contains("Hooky bar diagnostics"))
+        #expect(report.contains("App: 1.3.0 (4)"))
+        #expect(report.contains("[ready]"))
+        #expect(!report.contains("/Users/"))
+        #expect(!report.contains(NSHomeDirectory()))
+    }
 }
 
 private func diagnosticsContext(
