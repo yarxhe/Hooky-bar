@@ -29,6 +29,18 @@ struct MusicAdapterSnapshot {
     var identity: String {
         "\(title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())|\(artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
     }
+
+    /// MediaRemote может прислать название раньше исполнителя.
+    /// Дополнение неполных метаданных не является новым треком.
+    func matchesTrack(title previousTitle: String, artist previousArtist: String) -> Bool {
+        func normalized(_ value: String) -> String {
+            value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        let oldArtist = normalized(previousArtist)
+        let newArtist = normalized(artist)
+        return normalized(title) == normalized(previousTitle)
+            && (oldArtist.isEmpty || newArtist.isEmpty || oldArtist == newArtist)
+    }
 }
 
 enum MusicCommandError: Error, Sendable {

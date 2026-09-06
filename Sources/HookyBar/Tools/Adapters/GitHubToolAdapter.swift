@@ -13,6 +13,8 @@ final class GitHubToolAdapter: ToolActionAdapter {
 
     private var status = DeveloperCISnapshot()
     private var activity = DeveloperGitHubActivitySnapshot()
+    private var statusGeneration = 0
+    private var activityGeneration = 0
 
     func perform(_ action: ToolAction) -> IntegrationResult {
         let url: URL?
@@ -35,10 +37,13 @@ final class GitHubToolAdapter: ToolActionAdapter {
     }
 
     func inspectWorkspace(at workspaceURL: URL, completion: @escaping (DeveloperCISnapshot) -> Void) {
+        statusGeneration &+= 1
+        let generation = statusGeneration
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let nextStatus = GitHubStatusReader.read(at: workspaceURL)
             DispatchQueue.main.async {
-                self?.status = nextStatus
+                guard let self, self.statusGeneration == generation else { return }
+                self.status = nextStatus
                 completion(nextStatus)
             }
         }
@@ -48,10 +53,13 @@ final class GitHubToolAdapter: ToolActionAdapter {
         at workspaceURL: URL,
         completion: @escaping (DeveloperGitHubActivitySnapshot) -> Void
     ) {
+        activityGeneration &+= 1
+        let generation = activityGeneration
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let nextActivity = GitHubActivityReader.read(at: workspaceURL)
             DispatchQueue.main.async {
-                self?.activity = nextActivity
+                guard let self, self.activityGeneration == generation else { return }
+                self.activity = nextActivity
                 completion(nextActivity)
             }
         }
@@ -62,6 +70,8 @@ final class GitHubToolAdapter: ToolActionAdapter {
     }
 
     func clear() {
+        statusGeneration &+= 1
+        activityGeneration &+= 1
         status = DeveloperCISnapshot()
         activity = DeveloperGitHubActivitySnapshot()
     }

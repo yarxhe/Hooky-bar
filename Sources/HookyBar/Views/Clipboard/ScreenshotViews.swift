@@ -5,23 +5,22 @@ import SwiftUI
 final class ThumbnailLoader: ObservableObject {
     fileprivate static let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 12
-        cache.totalCostLimit = 12 * 1024 * 1024
+        cache.countLimit = 8
+        cache.totalCostLimit = 8 * 1024 * 1024
         return cache
     }()
     @Published var image: NSImage?
     private let url: URL
     private let size: CGSize
     private let cacheKey: NSString
+    private var isActive = false
+    private var loadGeneration = 0
 
     init(url: URL, size: CGSize) {
         self.url = url
         self.size = size
         self.cacheKey = "\(url.path)|\(Int(size.width))x\(Int(size.height))" as NSString
         self.image = Self.cache.object(forKey: cacheKey)
-        if image == nil {
-            DispatchQueue.main.async { [weak self] in self?.load() }
-        }
     }
 
     fileprivate static func immediateThumbnail(url: URL, size: CGSize) -> NSImage? {
@@ -51,8 +50,20 @@ final class ThumbnailLoader: ObservableObject {
         cache.setObject(image, forKey: key, cost: cost)
     }
 
+    func activate() {
+        isActive = true
+        if image == nil { load() }
+    }
+
+    func releaseImage() {
+        isActive = false
+        loadGeneration &+= 1
+        image = nil
+    }
+
     func load(attempt: Int = 0) {
-        guard image == nil else { return }
+        guard isActive, image == nil else { return }
+        let generation = loadGeneration
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         let url = self.url
         let maxPixelSize = max(size.width, size.height) * scale
@@ -67,7 +78,7 @@ final class ThumbnailLoader: ObservableObject {
             let cgImage = source.flatMap { CGImageSourceCreateThumbnailAtIndex($0, 0, options as CFDictionary) }
             let decoded = cgImage.map { NSImage(cgImage: $0, size: .zero) }
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.isActive, self.loadGeneration == generation else { return }
                 if let decoded {
                     self.image = decoded
                     Self.store(decoded, forKey: self.cacheKey)
@@ -104,6 +115,8 @@ struct AsyncThumbnail: View {
                 }
             }
         }
+        .onAppear { loader.activate() }
+        .onDisappear { loader.releaseImage() }
     }
 }
 

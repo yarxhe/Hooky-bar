@@ -228,8 +228,7 @@ extension MusicStore {
     func previousTrack() {
         trackNavigationDirection = -1
         manualTrackChangePending = true
-        ignoreRemoteElapsedUntil = .distantFuture
-        nowPlaying.elapsed = 0
+        ignoreRemoteElapsedUntil = Date().addingTimeInterval(3)
         controlPulse += 1
         performNavigationCommand { adapter, context in adapter.previousTrack(context: context) }
     }
@@ -237,8 +236,7 @@ extension MusicStore {
     func nextTrack() {
         trackNavigationDirection = 1
         manualTrackChangePending = true
-        ignoreRemoteElapsedUntil = .distantFuture
-        nowPlaying.elapsed = 0
+        ignoreRemoteElapsedUntil = Date().addingTimeInterval(3)
         controlPulse += 1
         performNavigationCommand { adapter, context in adapter.nextTrack(context: context) }
     }
@@ -246,19 +244,34 @@ extension MusicStore {
     func performNavigationCommand(
         _ command: @escaping (any MusicPlayerAdapter, MusicCommandContext) -> MusicAdapterResult
     ) {
+        navigationCommandGeneration &+= 1
+        let generation = navigationCommandGeneration
         let source = selectedMusicSource
         let adapter = activeAdapter
         let context = commandContext
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            _ = command(adapter, context)
+            let result = command(adapter, context)
             DispatchQueue.main.async {
-                guard let self, self.selectedMusicSource == source else { return }
+                guard let self, self.selectedMusicSource == source,
+                      self.navigationCommandGeneration == generation else { return }
+                if !result.success {
+                    self.finishUnconfirmedNavigation(generation: generation)
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.navigationRefreshDelay) { [weak self] in
                     self?.refreshMediaSnapshot()
                     self?.recoverSelectedPlaybackPresentation()
                 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    self?.finishUnconfirmedNavigation(generation: generation)
+                }
             }
         }
+    }
+
+    func finishUnconfirmedNavigation(generation: Int) {
+        guard navigationCommandGeneration == generation, manualTrackChangePending else { return }
+        manualTrackChangePending = false
+        ignoreRemoteElapsedUntil = .distantPast
     }
 
     func seek(to destination: Double) {
@@ -305,6 +318,7 @@ extension MusicStore {
     }
 
     func clearSelectedTrack() {
+        navigationCommandGeneration &+= 1
         activeMediaBundleIdentifier = nil
         adapterHasProvidedTrack = false
         upcomingTrack = nil
@@ -316,6 +330,7 @@ extension MusicStore {
         playbackOverrideUntil = .distantPast
         playbackCommandGeneration += 1
         nowPlaying = NowPlayingSnapshot(artist: selectedMusicSource.fullTitle)
+        visualizerColors = ArtworkPalette.fallback
         trackPresentationRevision &+= 1
         artworkPresentationRevision &+= 1
         if musicPresentationActive { musicPresentationActive = false }

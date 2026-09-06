@@ -36,10 +36,6 @@ struct HookyBarView: View {
             .foregroundStyle(Color.white)
             .contentShape(Rectangle())
             .onHover { ui.pointerInside($0) }
-            .gesture(DragGesture(minimumDistance: 8).onEnded { value in
-                if value.translation.height > 12 { ui.setExpanded(true) }
-                if value.translation.height < -12 { ui.setExpanded(false) }
-            })
             .offset(x: surfaceLayout.horizontalOffset)
             .animation(surfaceAnimation, value: ui.expanded)
             .animation(HookyMotion.collapseToIdle, value: ui.collapseSurfaceVisible)
@@ -102,6 +98,7 @@ struct HookyBarView: View {
             } else {
                 collapsedContent
                     .transition(.opacity)
+                    .gesture(panelDrag)
             }
         }
         .animation(HookyMotion.contentFade, value: ui.expanded)
@@ -186,9 +183,6 @@ struct HookyBarView: View {
                     colors: store.visualizerColors,
                     active: ui.expanded
                 )
-                .id(store.trackPresentationRevision)
-                .transition(.opacity)
-                .animation(HookyMotion.backgroundPalette, value: store.trackPresentationRevision)
             }
 
             VStack(spacing: 0) {
@@ -206,6 +200,8 @@ struct HookyBarView: View {
                     }
                 }
                 .padding(.horizontal, 9).frame(height: ui.notchHeight + 7)
+                .contentShape(Rectangle())
+                .gesture(panelDrag)
 
                 if let preview = ui.screenshotPreview {
                     ScreenshotCapturePane(url: preview) {
@@ -228,6 +224,7 @@ struct HookyBarView: View {
                     .padding(.bottom, 9)
                     .zIndex(1)
 
+                    // Сохраняем прежний переход содержимого внутри общего стекла.
                     HookyGlassContainer(spacing: 8) {
                         ZStack {
                             selectedPane
@@ -243,6 +240,14 @@ struct HookyBarView: View {
                     .clipped()
                 }
             }
+        }
+    }
+
+    // Только шапка управляет раскрытием: жест не конкурирует со ScrollView.
+    private var panelDrag: some Gesture {
+        DragGesture(minimumDistance: 8).onEnded { value in
+            if value.translation.height > 12 { ui.setExpanded(true) }
+            if value.translation.height < -12 { ui.setExpanded(false) }
         }
     }
 

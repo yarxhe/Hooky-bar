@@ -70,6 +70,11 @@ final class ClipboardStore: ObservableObject {
     }
 
     @discardableResult
+    func open(_ item: ClipboardItem) -> Bool {
+        adapters.first(where: { $0.id == item.sourceID })?.open(item).succeeded ?? false
+    }
+
+    @discardableResult
     func copyScreenshot(at url: URL) -> Bool {
         if let item = items.first(where: { $0.fileURL == url }) {
             return copy(item)

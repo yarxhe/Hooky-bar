@@ -13,19 +13,20 @@ final class YandexCDPBridge {
 
     private let endpoint: URL
     private let expectedBundleIdentifier: String
-    private let session: URLSession
+    private var session: URLSession
     private let operationLock = NSLock()
     private let ownershipLock = NSLock()
     private var cachedOwnerValidation: (date: Date, isValid: Bool)?
+    private var cachedTarget: (date: Date, url: URL)?
+    private var socketTask: URLSessionWebSocketTask?
+    private var socketURL: URL?
+    private var discardedSocketCount = 0
 
     init(port: UInt16, expectedBundleIdentifier: String) {
         self.port = port
         self.expectedBundleIdentifier = expectedBundleIdentifier
         endpoint = URL(string: "http://127.0.0.1:\(port)/json/list")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 2.0
-        configuration.timeoutIntervalForResource = 2.6
-        session = URLSession(configuration: configuration)
+        session = Self.makeSession()
     }
 
     /// A high, installation-specific port avoids exposing the conventional
@@ -50,7 +51,9 @@ final class YandexCDPBridge {
     }
 
     func isAvailable() -> Bool {
-        targetWebSocketURL() != nil
+        operationLock.lock()
+        defer { operationLock.unlock() }
+        return targetWebSocketURL() != nil
     }
 
     /// Returns nil when the player page is not ready, otherwise reports the
@@ -293,8 +296,7 @@ final class YandexCDPBridge {
         defer { operationLock.unlock() }
         guard let socketURL = targetWebSocketURL() else { return nil }
 
-        let task = session.webSocketTask(with: socketURL)
-        task.resume()
+        let task = connectedSocket(for: socketURL)
         let request: [String: Any] = [
             "id": 1,
             "method": "Runtime.evaluate",
@@ -302,7 +304,6 @@ final class YandexCDPBridge {
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: request),
               let string = String(data: data, encoding: .utf8) else {
-            task.cancel(with: .invalid, reason: nil)
             return nil
         }
 
@@ -320,8 +321,10 @@ final class YandexCDPBridge {
             } catch {}
             semaphore.signal()
         }
-        _ = semaphore.wait(timeout: .now() + 2.5)
-        task.cancel(with: .normalClosure, reason: nil)
+        let completed = semaphore.wait(timeout: .now() + 2.5) == .success
+        if !completed || responseData == nil {
+            invalidateSocket(task)
+        }
         guard let responseData,
               let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
               let result = response["result"] as? [String: Any],
@@ -331,6 +334,10 @@ final class YandexCDPBridge {
 
     private func targetWebSocketURL() -> URL? {
         guard debuggerBelongsToExpectedApplication() else { return nil }
+        if let cachedTarget,
+           Date().timeIntervalSince(cachedTarget.date) < 3 {
+            return cachedTarget.url
+        }
         let semaphore = DispatchSemaphore(value: 0)
         var result: URL?
         session.dataTask(with: endpoint) { [port] data, response, _ in
@@ -346,7 +353,46 @@ final class YandexCDPBridge {
             result = candidate
         }.resume()
         _ = semaphore.wait(timeout: .now() + 2.2)
+        if let result { cachedTarget = (Date(), result) }
         return result
+    }
+
+    /// CDP supports many sequential commands over one connection. Reusing it
+    /// prevents URLSession from retaining hundreds of completed WebSocket tasks.
+    private func connectedSocket(for url: URL) -> URLSessionWebSocketTask {
+        if let socketTask, socketURL == url { return socketTask }
+        socketTask?.cancel(with: .goingAway, reason: nil)
+        let task = session.webSocketTask(with: url)
+        socketTask = task
+        socketURL = url
+        task.resume()
+        return task
+    }
+
+    private func invalidateSocket(_ task: URLSessionWebSocketTask) {
+        task.cancel(with: .goingAway, reason: nil)
+        if socketTask === task {
+            socketTask = nil
+            socketURL = nil
+            discardedSocketCount += 1
+            // CFNetwork retains completed task metrics for the lifetime of a
+            // session. Yandex Electron closes CDP sockets periodically, so
+            // rotate the ephemeral session and keep that storage bounded.
+            if discardedSocketCount >= 8 {
+                session.invalidateAndCancel()
+                session = Self.makeSession()
+                discardedSocketCount = 0
+            }
+        }
+    }
+
+    private static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 2.0
+        configuration.timeoutIntervalForResource = 2.6
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
     }
 
     /// DevTools has no authentication. Before every short cache window, verify

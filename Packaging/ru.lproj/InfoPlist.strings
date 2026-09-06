@@ -3,3 +3,4 @@
 "NSAppleEventsUsageDescription" = "Hooky bar управляет только выбранным музыкальным плеером и создаёт заметку по вашей команде.";
 "NSDesktopFolderUsageDescription" = "Hooky bar читает папку со скриншотами, чтобы показать превью и добавить снимки в буфер.";
 "NSDownloadsFolderUsageDescription" = "Hooky bar отслеживает новые файлы в Загрузках только для уведомлений AirDrop.";
+"NSAudioCaptureUsageDescription" = "Hooky bar анализирует системный звук в памяти для визуализатора музыки. Звук не записывается и не отправляется. Микрофон не используется.";

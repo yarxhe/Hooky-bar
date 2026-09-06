@@ -57,6 +57,15 @@ struct SettingsPane: View {
                 }
 
                 Divider()
+                featureToggle(L10n.tr("settings.spectrum.title"), L10n.tr("settings.spectrum.subtitle"), "waveform",
+                    isOn: Binding(get: { store.systemSpectrumEnabled }, set: store.setSystemSpectrumEnabled))
+                if store.systemSpectrumEnabled {
+                    Text(L10n.tr(store.systemSpectrumStatus))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Divider()
                 settingsHeader(L10n.tr("settings.notes.title"), L10n.tr("settings.notes.subtitle"))
 
                 HStack(spacing: 12) {
