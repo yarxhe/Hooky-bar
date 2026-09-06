@@ -100,16 +100,16 @@ struct ClipboardPane: View {
                                 copy: { copy(item) },
                                 togglePin: { clipboard.togglePinned(item) },
                                 remove: { clipboard.remove(item) },
-                                open: {
-                                    if let url = item.fileURL { NSWorkspace.shared.open(url) }
-                                }
+                                open: { clipboard.open(item) }
                             )
                         }
                     }
                     // Даёт последней, в том числе неполной, строке подняться над нижним краем.
                     .padding(.bottom, scrollRunway(for: displayedItems.count))
                     .background(ClipboardScrollObserver { state.updateScrollOffset($0) })
+                    .background(VerticalScrollLock().frame(width: 0, height: 0))
                 }
+                .clipped()
             }
         }
         .padding(.horizontal, 12)
@@ -122,7 +122,8 @@ struct ClipboardPane: View {
 
     private var controls: some View {
         VStack(spacing: state.controlsCompact ? 0 : 6) {
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
+              HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.38))
@@ -140,19 +141,22 @@ struct ClipboardPane: View {
                     }
                     .buttonStyle(.plain)
                 }
+              }
+              .padding(.horizontal, 10)
+              .frame(height: 32)
+              .hookyGlass(cornerRadius: 9, interactive: true)
+
                 Button {
                     guard clipboard.clearUnpinnedHistory() > 0 else { return }
                     state.showHistoryCleared()
                 } label: {
-                    Image(systemName: state.historyCleared ? "checkmark" : "trash")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(state.historyCleared ? .green : .white.opacity(0.46))
+                    Image(systemName: state.historyCleared ? "checkmark" : "trash.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(state.historyCleared ? .green : .white.opacity(0.9))
                         .contentTransition(.symbolEffect(.replace))
-                        .frame(width: 28, height: 24)
-                        .background(
-                            Color.white.opacity(0.08),
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        )
+                        .frame(width: 40, height: 32)
+                        .hookyGlass(cornerRadius: 16, interactive: true)
+                        .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 1))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -165,9 +169,6 @@ struct ClipboardPane: View {
                 ))
                 .accessibilityLabel(L10n.tr("clipboard.clearHistory"))
             }
-            .padding(.horizontal, 10)
-            .frame(height: state.controlsCompact ? 25 : 28)
-            .hookyGlass(cornerRadius: 9, interactive: true)
 
             if !state.controlsCompact {
                 expandedFilterRow

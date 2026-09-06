@@ -8,12 +8,16 @@ struct ToolsPane: View {
     private let durations = [25, 30, 45]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            timerCard
-            quickActions
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 16) {
+                timerCard
+                quickActions
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 16)
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 11)
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private var timerCard: some View {
@@ -29,13 +33,13 @@ struct ToolsPane: View {
                     .foregroundStyle(features.pomodoroRunning ? Color.red : .white.opacity(0.78))
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ForEach(durations, id: \.self) { minutes in
                     Button { features.setPomodoroDuration(minutes: minutes) } label: {
                         Text(L10n.tr("tools.minutes.format", minutes))
                             .font(.system(size: 9, weight: .semibold, design: .rounded))
                             .frame(maxWidth: .infinity)
-                            .frame(height: 24)
+                            .frame(height: 32)
                             .background(
                                 features.pomodoroSelectedMinutes == minutes
                                     ? Color.white.opacity(0.16) : .white.opacity(0.045),
@@ -68,16 +72,16 @@ struct ToolsPane: View {
 
             }
         }
-        .padding(10)
-        .hookyGlass(cornerRadius: 13)
+        .padding(12)
+        .hookyGlass(cornerRadius: 16)
     }
 
     private var quickActions: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(L10n.tr("tools.quickAccess"))
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(.white.opacity(0.72))
                 Spacer()
                 if let status = notes.status {
                     Text(status).font(.system(size: 8, weight: .semibold)).foregroundStyle(.red.opacity(0.8))
@@ -92,11 +96,11 @@ struct ToolsPane: View {
                 }
             }
 
-            HStack(spacing: 6) {
-                quickButton(L10n.tr("tools.myNotes"), "note.text", action: notes.openNotes)
-                quickButton(L10n.tr("tools.newNote"), "square.and.pencil", action: notes.createNote)
-                quickButton(L10n.tr("tools.calendar"), "calendar", action: tools.openCalendar)
-                quickButton(L10n.tr("tools.downloads"), "arrow.down.circle", action: tools.openDownloads)
+            HStack(spacing: 8) {
+                QuickActionButton(title: L10n.tr("tools.myNotes"), symbol: "note.text", action: notes.openNotes)
+                QuickActionButton(title: L10n.tr("tools.newNote"), symbol: "square.and.pencil", action: notes.createNote)
+                QuickActionButton(title: L10n.tr("tools.calendar"), symbol: "calendar", action: tools.openCalendar)
+                QuickActionButton(title: L10n.tr("tools.downloads"), symbol: "arrow.down.circle", action: tools.openDownloads)
             }
         }
     }
@@ -153,21 +157,6 @@ struct ToolsPane: View {
         }
         .buttonStyle(SpringPressButtonStyle())
         .help(help)
-    }
-
-    private func quickButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.system(size: 13, weight: .medium))
-                Text(title).font(.system(size: 8.5, weight: .semibold)).lineLimit(1)
-            }
-            .foregroundStyle(.white.opacity(0.84))
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
-            .hookyGlass(cornerRadius: 10, interactive: true)
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(SpringPressButtonStyle())
     }
 
 }

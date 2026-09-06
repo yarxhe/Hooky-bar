@@ -37,31 +37,30 @@ struct TrackProgressSlider: View {
             let width = max(1, proxy.size.width)
             let safeDuration = max(1, duration)
             let progress = CGFloat(activeValue / safeDuration)
-            let thumbSize: CGFloat = interaction.dragValue == nil ? 9 : 12
+            let thumbSize: CGFloat = interaction.dragValue == nil ? 9 : 11
             let thumbCenter = min(max(thumbSize / 2, width * progress), width - thumbSize / 2)
             let bubbleCenter = min(max(24, thumbCenter), max(24, width - 24))
-            let trackHeight: CGFloat = interaction.hovering || interaction.dragValue != nil ? 8 : 6
+            let trackHeight = PlaybackSliderStyle.thickness
 
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(0.14))
+                    .fill(PlaybackSliderStyle.track)
                     .frame(height: trackHeight)
                     .position(x: width / 2, y: 25)
 
                 Capsule()
-                    .fill(HookyTheme.controlAccent)
+                    .fill(PlaybackSliderStyle.fill)
                     .frame(width: max(trackHeight, width * progress), height: trackHeight)
                     .position(x: max(trackHeight, width * progress) / 2, y: 25)
 
-                Circle().fill(.white)
-                    .overlay { Circle().stroke(.black.opacity(0.16), lineWidth: 0.8) }
-                .shadow(color: .black.opacity(0.42), radius: 4, y: 1)
+                Circle().fill(PlaybackSliderStyle.thumb)
                 .frame(width: thumbSize, height: thumbSize)
                 .position(x: thumbCenter, y: 25)
                 .opacity(interaction.hovering || interaction.dragValue != nil ? 1 : 0.78)
 
                 Text(time(activeValue))
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 9, weight: .medium))
+                    .monospacedDigit()
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
@@ -70,7 +69,6 @@ struct TrackProgressSlider: View {
                     .fixedSize()
                     .position(x: bubbleCenter, y: 7)
                     .opacity(interaction.dragValue == nil ? 0 : 1)
-                    .scaleEffect(interaction.dragValue == nil ? 0.82 : 1)
             }
             .contentShape(Rectangle())
             .onHover { inside in
@@ -97,7 +95,6 @@ struct TrackProgressSlider: View {
                         interaction.finish()
                     }
             )
-            .animation(.spring(response: 0.20, dampingFraction: 0.76), value: trackHeight)
         }
         .frame(height: 34)
     }

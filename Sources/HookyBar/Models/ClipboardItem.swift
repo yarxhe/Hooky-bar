@@ -34,4 +34,9 @@ struct ClipboardItem: Identifiable, Equatable {
         let markers = ["func ", "let ", "const ", "class ", "struct ", "import ", "=>", "{\n", "</"]
         return text.contains("\n") && markers.contains(where: text.contains)
     }
+
+    var linkHost: String? {
+        guard isLink, let text else { return nil }
+        return URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines))?.host
+    }
 }

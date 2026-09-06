@@ -13,6 +13,7 @@ final class ToolsStore: ObservableObject {
     @Published private(set) var status: String?
 
     private var caffeinateProcess: Process?
+    private var workspaceRefreshGeneration = 0
     private var adapters: [any ToolActionAdapter]
     private let developerAdapter: DeveloperToolAdapter
     private let githubAdapter: GitHubToolAdapter
@@ -141,9 +142,11 @@ final class ToolsStore: ObservableObject {
 
     func refreshDeveloperWorkspace() {
         guard developerModeEnabled else { return }
+        workspaceRefreshGeneration &+= 1
+        let generation = workspaceRefreshGeneration
         status = L10n.tr("tools.refreshing")
         developerAdapter.inspectWorkspace { [weak self] snapshot in
-            guard let self else { return }
+            guard let self, self.workspaceRefreshGeneration == generation else { return }
             let workspaceChanged = self.workspace.path != snapshot.path
             self.workspace = snapshot
             guard let workspaceURL = self.developerAdapter.workspaceURL else {
@@ -166,11 +169,13 @@ final class ToolsStore: ObservableObject {
                 self.developerCommand.output = previous.output
             }
             self.githubAdapter.inspectWorkspace(at: workspaceURL) { [weak self] ciSnapshot in
-                self?.developerCI = ciSnapshot
-                self?.status = nil
+                guard let self, self.workspaceRefreshGeneration == generation else { return }
+                self.developerCI = ciSnapshot
+                self.status = nil
             }
             self.githubAdapter.inspectActivity(at: workspaceURL) { [weak self] activity in
-                self?.developerGitHubActivity = activity
+                guard let self, self.workspaceRefreshGeneration == generation else { return }
+                self.developerGitHubActivity = activity
             }
         }
     }

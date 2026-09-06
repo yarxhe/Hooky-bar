@@ -98,28 +98,3 @@ enum PlaybackQueueReader {
         return decoded
     }
 }
-
-enum ArtworkPalette {
-    static func colors(from image: NSImage) -> [Color] {
-        guard let data = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: data) else { return [.yellow, .orange] }
-        let stepX = max(1, bitmap.pixelsWide / 18)
-        let stepY = max(1, bitmap.pixelsHigh / 18)
-        var samples: [(color: NSColor, hue: CGFloat, score: CGFloat)] = []
-        for x in stride(from: 0, to: bitmap.pixelsWide, by: stepX) {
-            for y in stride(from: 0, to: bitmap.pixelsHigh, by: stepY) {
-                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
-                var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
-                color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-                guard saturation > 0.22, brightness > 0.18, alpha > 0.5 else { continue }
-                samples.append((color, hue, saturation * 0.72 + brightness * 0.28))
-            }
-        }
-        var selected: [(NSColor, CGFloat)] = []
-        for sample in samples.sorted(by: { $0.score > $1.score }) {
-            let isDifferent = selected.allSatisfy { min(abs($0.1 - sample.hue), 1 - abs($0.1 - sample.hue)) > 0.10 }
-            if isDifferent { selected.append((sample.color, sample.hue)) }
-            if selected.count == 3 { break }
-        }
-        return selected.isEmpty ? [.yellow, .orange] : selected.map { Color(nsColor: $0.0) }
-    }
-}

@@ -17,6 +17,10 @@
 "music.queueUnavailable" = "queue unavailable";
 "music.like" = "Like";
 "music.dislike" = "Dislike";
+"music.previous" = "Previous track";
+"music.next" = "Next track";
+"music.play" = "Play";
+"music.pause" = "Pause";
 
 "clipboard.source.screenshots" = "Screenshots";
 "clipboard.source.system" = "macOS Clipboard";
@@ -194,3 +198,21 @@
 "event.calendar.inMinutes.format" = "In %d min";
 "event.pomodoro.finished" = "Focus complete";
 "event.pomodoro.break" = "Time for a short break";
+"settings.spectrum.title" = "Audio-reactive visualizer";
+"settings.spectrum.subtitle" = "Analyzes system audio while music is playing. No microphone, recording or upload.";
+"settings.spectrum.idle" = "Waiting for music playback.";
+"settings.spectrum.active" = "System audio capture is running.";
+"settings.spectrum.unavailable" = "Audio capture is unavailable. Check macOS system audio recording permissions, then turn this option off and on to retry.";
+"settings.spectrum.unsupported" = "System audio capture requires macOS 14.2 or later.";
+"clipboard.shelf.preview" = "Preview";
+"clipboard.shelf.back" = "Back";
+"clipboard.shelf.remove" = "Remove from history";
+"clipboard.shelf.more" = "More actions";
+"clipboard.shelf.pin" = "Toggle pin";
+"clipboard.shelf.copied" = "Copied";
+"clipboard.shelf.code" = "Code";
+"clipboard.shelf.text" = "Text";
+"clipboard.shelf.hint" = "Click to copy. Space previews the focused card. Escape closes the preview.";
+"clipboard.shelf.open" = "Open screenshot";
+"clipboard.shelf.screenshotHint" = "Click to copy. Double-click to open the screenshot in its default app.";
+"clipboard.shelf.textHint" = "Click to copy text.";

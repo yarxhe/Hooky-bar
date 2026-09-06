@@ -5,42 +5,46 @@ struct DeveloperPane: View {
     @ObservedObject var tools: ToolsStore
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 8) {
-                projectCard
-                commandCard
-                actionRow
-                githubActivityCard
-                // Даёт реальный запас прокрутки: нижние действия можно поднять над краем острова.
-                Color.clear.frame(height: 54)
+        GeometryReader { viewport in
+            ScrollView(.vertical) {
+                HookyGlassContainer(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        projectCard
+                        actionRow
+                        commandCard
+                        githubActivityCard
+                        // Нижние действия можно поднять над краем острова.
+                        Color.clear.frame(height: 24)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                }
+                .frame(width: viewport.size.width)
+                .background(VerticalScrollLock().frame(width: 0, height: 0))
             }
-            .padding(.horizontal, 12)
+            .frame(width: viewport.size.width, height: viewport.size.height)
+            .scrollIndicators(.visible)
+            .scrollClipDisabled(false)
+            .scrollBounceBehavior(.basedOnSize)
+            .clipped()
         }
-        .scrollIndicators(.hidden)
-        .scrollClipDisabled(false)
-        .scrollBounceBehavior(.basedOnSize)
         .onAppear(perform: tools.refreshDeveloperWorkspace)
     }
 
     private var projectCard: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             if tools.workspace.isConfigured {
                 workspaceHeader
+                    .help(tools.workspace.lastCommit.isEmpty ? tools.workspace.folderName : tools.workspace.lastCommit)
 
-                if !tools.workspace.lastCommit.isEmpty {
-                    Text(tools.workspace.lastCommit)
-                        .font(.system(size: 8, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.42))
-                        .lineLimit(1)
-                        .padding(.horizontal, 2)
-                }
-
-                HStack(spacing: 5) {
+                HStack(spacing: 8) {
                     gitMetric(L10n.tr("dev.changedShort"), tools.workspace.changedFiles, "pencil.line")
                     gitMetric(L10n.tr("dev.untrackedShort"), tools.workspace.untrackedFiles, "plus")
-                    gitMetric(L10n.tr("dev.ahead"), tools.workspace.ahead, "arrow.up")
-                    gitMetric(L10n.tr("dev.behind"), tools.workspace.behind, "arrow.down")
-                    gitMetric(L10n.tr("dev.stash"), tools.workspace.stashCount, "tray.full")
+                }
+                HStack(spacing: 8) {
+                    gitMetric(L10n.tr("dev.ahead"), tools.workspace.ahead, "arrow.up", compact: true)
+                    gitMetric(L10n.tr("dev.behind"), tools.workspace.behind, "arrow.down", compact: true)
+                    gitMetric(L10n.tr("dev.stash"), tools.workspace.stashCount, "tray.full", compact: true)
                 }
                 activityStatusRow
             } else {
@@ -54,8 +58,8 @@ struct DeveloperPane: View {
                 .buttonStyle(SpringPressButtonStyle())
             }
         }
-        .padding(10)
-        .hookyGlass(cornerRadius: 13)
+        .padding(12)
+        .hookyGlass(cornerRadius: 16)
     }
 
     private var workspaceHeader: some View {
@@ -67,11 +71,11 @@ struct DeveloperPane: View {
                 .background(.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(tools.workspace.folderName)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .lineLimit(1)
                 Text(tools.workspace.branch)
-                    .font(.system(size: 8.5, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -118,16 +122,16 @@ struct DeveloperPane: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(tools.developerCI.workflow)
-                        .font(.system(size: 9.5, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .lineLimit(1)
                     Text(ciSubtitle)
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.43))
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 Text(tools.developerCI.status)
-                    .font(.system(size: 7.5, weight: .bold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(ciColor.opacity(0.9))
                     .multilineTextAlignment(.trailing)
                     .lineLimit(2)
@@ -138,37 +142,39 @@ struct DeveloperPane: View {
             }
             .padding(.horizontal, 7)
             .frame(maxWidth: .infinity)
-            .frame(height: 38)
+            .frame(height: 40)
             .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(SpringPressButtonStyle())
         .frame(maxWidth: .infinity)
+        .help("\(tools.developerCI.workflow) · \(ciSubtitle) · \(tools.developerCI.status)")
     }
 
     private var actionRow: some View {
-        HStack(spacing: 6) {
-            quickButton(tools.selectedIDE.title, tools.selectedIDE.symbol, action: tools.openWorkspaceInIDE)
-            quickButton(L10n.tr("dev.terminal"), "terminal", action: tools.openWorkspaceInTerminal)
-            quickButton("GitHub", "arrow.up.right.square", action: tools.openDeveloperRepository)
-            quickButton(L10n.tr("dev.path"), "doc.on.doc", action: tools.copyWorkspacePath)
+        HStack(spacing: 8) {
+            QuickActionButton(title: tools.selectedIDE.title, symbol: tools.selectedIDE.symbol, action: tools.openWorkspaceInIDE)
+            QuickActionButton(title: L10n.tr("dev.terminal"), symbol: "terminal", action: tools.openWorkspaceInTerminal)
+            QuickActionButton(title: "GitHub", symbol: "arrow.up.right.square", action: tools.openDeveloperRepository)
+                .disabled(tools.developerCI.repositoryURL == nil)
+            QuickActionButton(title: L10n.tr("dev.path"), symbol: "doc.on.doc", action: tools.copyWorkspacePath)
         }
-        .opacity(tools.workspace.isConfigured ? 1 : 0.38)
+        .disabled(!tools.workspace.isConfigured)
     }
 
     private var commandCard: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
                 Label(L10n.tr("dev.commands"), systemImage: "play.rectangle")
-                    .font(.system(size: 9.5, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                 Spacer(minLength: 0)
                 Text(commandStatus)
-                    .font(.system(size: 7.5, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(commandStatusColor.opacity(0.85))
                     .lineLimit(1)
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 commandButton(.run, L10n.tr("dev.command.run"), "play.fill")
                 commandButton(.test, L10n.tr("dev.command.test"), "checkmark.circle")
                 commandButton(.build, L10n.tr("dev.command.build"), "hammer.fill")
@@ -176,13 +182,14 @@ struct DeveloperPane: View {
 
             if let outputLine = commandOutputLine {
                 Text(outputLine)
-                    .font(.system(size: 7.5, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.38))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
                     .lineLimit(1)
+                    .help(outputLine)
             }
         }
-        .padding(10)
-        .hookyGlass(cornerRadius: 13)
+        .padding(12)
+        .hookyGlass(cornerRadius: 16)
         .opacity(tools.workspace.isConfigured ? 1 : 0.38)
     }
 
@@ -206,7 +213,7 @@ struct DeveloperPane: View {
                 Text(active ? L10n.tr("dev.command.stop") : title)
                     .lineLimit(1)
             }
-            .font(.system(size: 8.5, weight: .semibold))
+            .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(commandColor(for: command))
             .frame(maxWidth: .infinity)
             .frame(height: 32)
@@ -215,14 +222,14 @@ struct DeveloperPane: View {
         }
         .buttonStyle(SpringPressButtonStyle())
         .disabled(!available || (tools.developerCommand.state == .running && !active))
-        .opacity(available ? 1 : 0.3)
+        .opacity(available ? 1 : 0.5)
     }
 
     private var githubActivityCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label(L10n.tr("dev.github.activity"), systemImage: "bubble.left.and.bubble.right")
-                    .font(.system(size: 9.5, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                 Spacer()
                 if tools.developerGitHubActivity.openIssueCount > 0 {
                     Text(L10n.tr("dev.github.openIssues.format", tools.developerGitHubActivity.openIssueCount))
@@ -236,6 +243,7 @@ struct DeveloperPane: View {
                     nil,
                     fallbackTitle: L10n.tr("dev.github.noIssues"),
                     symbol: "exclamationmark.circle",
+                    allowsEmptyNavigation: tools.developerCI.repositoryURL != nil,
                     action: tools.openDeveloperIssues
                 )
             } else {
@@ -252,6 +260,7 @@ struct DeveloperPane: View {
                 tools.developerGitHubActivity.latestRelease,
                 fallbackTitle: L10n.tr("dev.github.noReleases"),
                 symbol: "tag",
+                allowsEmptyNavigation: tools.developerCI.repositoryURL != nil,
                 action: tools.openDeveloperRelease
             )
             githubActivityRow(
@@ -261,8 +270,8 @@ struct DeveloperPane: View {
                 action: tools.openDeveloperDiscussion
             )
         }
-        .padding(10)
-        .hookyGlass(cornerRadius: 13)
+        .padding(12)
+        .hookyGlass(cornerRadius: 16)
         .opacity(tools.workspace.isConfigured ? 1 : 0.38)
     }
 
@@ -270,6 +279,7 @@ struct DeveloperPane: View {
         _ item: DeveloperGitHubActivityItem?,
         fallbackTitle: String,
         symbol: String,
+        allowsEmptyNavigation: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -280,61 +290,49 @@ struct DeveloperPane: View {
                     .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item?.title ?? fallbackTitle)
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(.white.opacity(item == nil ? 0.4 : 0.86))
-                        .lineLimit(1)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(item == nil ? 0.6 : 0.9))
+                        .lineLimit(2)
                     if let subtitle = item?.subtitle, !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(.system(size: 7.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 7.5, weight: .bold))
-                    .foregroundStyle(.white.opacity(item == nil ? 0.12 : 0.25))
+                    .foregroundStyle(.white.opacity(item == nil && !allowsEmptyNavigation ? 0 : 0.5))
             }
-            .padding(.horizontal, 7)
+            .padding(8)
             .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .frame(minHeight: 48)
             .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(SpringPressButtonStyle())
-        .disabled(item == nil)
+        .disabled(item == nil && !allowsEmptyNavigation)
+        .help(item?.title ?? fallbackTitle)
     }
 
-    private func quickButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.system(size: 13, weight: .medium))
-                Text(title).font(.system(size: 8.5, weight: .semibold)).lineLimit(1)
-            }
-            .foregroundStyle(.white.opacity(0.84))
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
-            .hookyGlass(
-                cornerRadius: 10,
-                interactive: true
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(SpringPressButtonStyle())
-    }
-
-    private func gitMetric(_ title: String, _ value: Int, _ symbol: String) -> some View {
-        HStack(spacing: 4) {
+    private func gitMetric(_ title: String, _ value: Int, _ symbol: String, compact: Bool = false) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: symbol).font(.system(size: 9, weight: .semibold))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title).font(.system(size: 7.5, weight: .bold)).foregroundStyle(.white.opacity(0.36))
-                Text("\(value)").font(.system(size: 8.5, weight: .semibold, design: .monospaced)).lineLimit(1)
-            }
+                .foregroundStyle(.white.opacity(0.6))
+            Text(title).font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.65))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text("\(value)").font(.system(size: 11, weight: .semibold, design: .monospaced)).lineLimit(1)
+                .foregroundStyle(value > 0 ? HookyTheme.controlAccent : .white)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 29)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(height: compact ? 16 : 32)
+        .background(.white.opacity(compact ? 0 : 0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(String(value))
     }
 
     private var ciSubtitle: String {

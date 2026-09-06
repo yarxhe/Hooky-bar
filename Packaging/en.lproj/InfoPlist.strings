@@ -3,3 +3,4 @@
 "NSAppleEventsUsageDescription" = "Hooky bar controls only your selected music player and creates a note when you ask.";
 "NSDesktopFolderUsageDescription" = "Hooky bar reads the screenshots folder to show previews and add images to the clipboard.";
 "NSDownloadsFolderUsageDescription" = "Hooky bar watches for new files in Downloads only to show AirDrop notifications.";
+"NSAudioCaptureUsageDescription" = "Hooky bar analyzes system audio in memory to animate the music visualizer. Audio is not recorded or transmitted. The microphone is not used.";

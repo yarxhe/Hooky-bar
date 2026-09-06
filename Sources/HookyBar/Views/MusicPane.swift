@@ -4,16 +4,23 @@ import SwiftUI
 struct MusicPane: View {
     @ObservedObject var store: MusicStore
     @ObservedObject var volume: VolumeStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 6) {
-                trackHeader
-                    .id(store.trackPresentationRevision)
-                    .transition(trackTransition)
-                    .animation(HookyMotion.trackSwitch, value: store.trackPresentationRevision)
+                // Старый и новый трек занимают одну область во время перехода:
+                // VStack не раздвигает ползунки и кнопки на высоту второй обложки.
+                ZStack {
+                    MusicTrackHeader(snapshot: store.nowPlaying, source: store.selectedMusicSource)
+                        .id(store.trackPresentationRevision)
+                        .transition(trackTransition(direction: store.trackNavigationDirection))
+                }
+                .frame(height: 88)
+                .clipped()
+                .allowsHitTesting(false)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: store.trackPresentationRevision)
 
-                HStack(spacing: 8) {
-                    Text(time(store.nowPlaying.elapsed))
+                VStack(spacing: 0) {
                     TrackProgressSlider(
                         value: store.nowPlaying.elapsed,
                         duration: store.nowPlaying.duration,
@@ -21,10 +28,15 @@ struct MusicPane: View {
                         onScrub: { store.previewScrubbing(at: $0) },
                         onEnd: { store.finishScrubbing(at: $0) }
                     )
-                    Text(time(store.nowPlaying.duration))
+                    HStack {
+                        Text(time(store.nowPlaying.elapsed))
+                        Spacer()
+                        Text(time(store.nowPlaying.duration))
+                    }
+                    .font(.system(size: 9, weight: .regular))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.48))
                 }
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.48))
 
                 ElasticVolumeSlider(
                     value: volume.level
@@ -34,6 +46,8 @@ struct MusicPane: View {
                 ZStack {
                     HStack(spacing: 10) {
                         AnimatedControlButton(icon: "backward.end.fill", size: 17) { store.previousTrack() }
+                            .accessibilityLabel(L10n.tr("music.previous"))
+                            .help(L10n.tr("music.previous"))
                         Button {
                             store.togglePlayback()
                         } label: {
@@ -46,8 +60,12 @@ struct MusicPane: View {
                                 )
                                 .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                                 .contentTransition(.symbolEffect(.replace.downUp))
-                        }.buttonStyle(SpringPressButtonStyle())
+                        }.buttonStyle(SpringPressButtonStyle.music)
+                        .accessibilityLabel(L10n.tr(store.nowPlaying.isPlaying ? "music.pause" : "music.play"))
+                        .help(L10n.tr(store.nowPlaying.isPlaying ? "music.pause" : "music.play"))
                         AnimatedControlButton(icon: "forward.end.fill", size: 17) { store.nextTrack() }
+                            .accessibilityLabel(L10n.tr("music.next"))
+                            .help(L10n.tr("music.next"))
                     }
                     HStack {
                         if store.canDislike {
@@ -59,7 +77,7 @@ struct MusicPane: View {
                                     .hookyGlass(cornerRadius: 13, interactive: true)
                                     .contentTransition(.symbolEffect(.replace))
                             }
-                            .buttonStyle(SpringPressButtonStyle())
+                            .buttonStyle(SpringPressButtonStyle.music)
                             .help(L10n.tr("music.dislike"))
                         }
                         Spacer()
@@ -79,7 +97,7 @@ struct MusicPane: View {
                                 .contentTransition(.symbolEffect(.replace))
                                 .animation(.spring(response: 0.3, dampingFraction: 0.58), value: store.nowPlaying.isLiked)
                         }
-                        .buttonStyle(SpringPressButtonStyle())
+                        .buttonStyle(SpringPressButtonStyle.music)
                         .help(L10n.tr("music.like"))
                     }
                 }
@@ -87,58 +105,11 @@ struct MusicPane: View {
         .padding(.horizontal, 20).padding(.vertical, 7)
     }
 
-    private var trackTransition: AnyTransition {
-        let direction = store.trackNavigationDirection
-        // Next track (direction > 0): incoming slides in from the right (trailing),
-        // outgoing slides out to the left (leading).
-        // Previous track (direction < 0): incoming slides in from the left (leading),
-        // outgoing slides out to the right (trailing).
-        let insertionEdge: Edge = direction > 0 ? .trailing : .leading
-        let removalEdge: Edge = direction > 0 ? .leading : .trailing
-
+    private func trackTransition(direction: Int) -> AnyTransition {
+        let offset: CGFloat = reduceMotion ? 0 : (direction > 0 ? 24 : -24)
         return .asymmetric(
-            insertion: .move(edge: insertionEdge).combined(with: .opacity),
-            removal: .move(edge: removalEdge).combined(with: .opacity)
-        )
-    }
-
-    private var trackHeader: some View {
-        VStack(spacing: 3) {
-            ZStack {
-                Group {
-                    if let artwork = store.nowPlaying.artwork {
-                        Image(nsImage: artwork).resizable().scaledToFill()
-                    } else {
-                        MusicSourceIcon(source: store.selectedMusicSource)
-                    }
-                }
-                .id(store.artworkPresentationRevision)
-                .transition(artworkTransition)
-            }
-            .frame(width: 52, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 11))
-            .animation(HookyMotion.artworkArrival, value: store.artworkPresentationRevision)
-            Text(store.nowPlaying.title)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-            Text(store.nowPlaying.artist)
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.48))
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var artworkTransition: AnyTransition {
-        let insertionEdge: Edge = store.trackNavigationDirection > 0 ? .trailing : .leading
-        let removalEdge: Edge = store.trackNavigationDirection > 0 ? .leading : .trailing
-        return .asymmetric(
-            insertion: .move(edge: insertionEdge)
-                .combined(with: .scale(scale: 0.9))
-                .combined(with: .opacity),
-            removal: .move(edge: removalEdge)
-                .combined(with: .scale(scale: 0.96))
-                .combined(with: .opacity)
+            insertion: .offset(x: offset).combined(with: .opacity),
+            removal: .offset(x: -offset).combined(with: .opacity)
         )
     }
 
@@ -150,11 +121,20 @@ struct MusicPane: View {
 }
 
 struct SpringPressButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var pressedScale: CGFloat = 0.96
+    var pressedOpacity: Double = 0.85
+    var dampingFraction: Double = 0.82
+
+    static let music = SpringPressButtonStyle(
+        pressedScale: 0.84, pressedOpacity: 0.66, dampingFraction: 0.58
+    )
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.84 : 1)
-            .opacity(configuration.isPressed ? 0.66 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.58), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? pressedScale : 1)
+            .opacity(configuration.isPressed ? pressedOpacity : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: dampingFraction), value: configuration.isPressed)
     }
 }
 
@@ -173,6 +153,6 @@ struct AnimatedControlButton: View {
                 .hookyGlass(cornerRadius: 14, interactive: true)
                 .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(SpringPressButtonStyle())
+        .buttonStyle(SpringPressButtonStyle.music)
     }
 }

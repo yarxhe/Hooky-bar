@@ -41,6 +41,13 @@ final class ScreenshotClipboardAdapter: ClipboardSourceAdapter {
         return pasteboard.writeObjects([image]) ? .success : .failed(.commandRejected)
     }
 
+    func open(_ item: ClipboardItem) -> IntegrationResult {
+        guard item.kind == .screenshot, item.sourceID == id,
+              let url = item.fileURL, url.isFileURL,
+              FileManager.default.fileExists(atPath: url.path) else { return .failed(.unavailable) }
+        return NSWorkspace.shared.open(url) ? .success : .failed(.commandRejected)
+    }
+
     func remove(_ item: ClipboardItem) -> IntegrationResult {
         items.removeAll { $0.id == item.id }
         publish()
@@ -110,7 +117,7 @@ final class ScreenshotClipboardAdapter: ClipboardSourceAdapter {
     }
 
     private func startWatcher() {
-        let descriptor = open(screenshotFolder().path, O_EVTONLY)
+        let descriptor = Darwin.open(screenshotFolder().path, O_EVTONLY)
         guard descriptor >= 0 else { return }
         directoryFileDescriptor = descriptor
         let source = DispatchSource.makeFileSystemObjectSource(

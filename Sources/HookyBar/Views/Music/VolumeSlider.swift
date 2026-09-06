@@ -24,15 +24,14 @@ struct ElasticVolumeSlider: View {
 
             GeometryReader { proxy in
                 let width = max(1, proxy.size.width)
-                let trackHeight: CGFloat = interaction.hovering || interaction.dragValue != nil ? 11 : 6
+                let trackHeight = PlaybackSliderStyle.thickness
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.14))
+                    Capsule().fill(PlaybackSliderStyle.track)
                     Capsule()
-                        .fill(HookyTheme.controlAccent)
+                        .fill(PlaybackSliderStyle.fill)
                         .frame(width: max(trackHeight, width * progress))
                     Circle()
-                        .fill(Color.white)
-                        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                        .fill(PlaybackSliderStyle.thumb)
                         .frame(width: trackHeight + 3, height: trackHeight + 3)
                         .offset(x: max(0, min(width - trackHeight - 3, width * progress - (trackHeight + 3) / 2)))
                         .opacity(interaction.hovering || interaction.dragValue != nil ? 1 : 0)

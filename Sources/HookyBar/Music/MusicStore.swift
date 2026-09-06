@@ -29,6 +29,7 @@ final class MusicStore: ObservableObject {
     @Published var isSelectedMusicAppRunning = false
     @Published var selectedMusicSource: MusicSource {
         didSet {
+            navigationCommandGeneration &+= 1
             UserDefaults.standard.set(selectedMusicSource.rawValue, forKey: MusicStoreDefaultsKey.selectedMusicSource.rawValue)
             adapterHasProvidedTrack = false
             activeMediaBundleIdentifier = nil
@@ -36,6 +37,7 @@ final class MusicStore: ObservableObject {
             currentTrackIdentity = nil
             upcomingTrack = nil
             nowPlaying = NowPlayingSnapshot(artist: selectedMusicSource.fullTitle)
+            visualizerColors = ArtworkPalette.fallback
             isFetchingLikeState = false
             isFetchingUpcoming = false
             isFetchingSelectedPlaybackState = false
@@ -53,12 +55,13 @@ final class MusicStore: ObservableObject {
     @Published var upcomingTrack: UpcomingTrack?
     @Published var spectrum: [CGFloat] = Array(repeating: 0.08, count: 12)
     @Published var audioLevel: CGFloat = 0
-    @Published var visualizerColors: [Color] = [.yellow, .orange]
+    @Published var visualizerColors: [Color] = ArtworkPalette.fallback
     @Published var audioActive = false
     @Published var musicPresentationActive = false
     @Published var compactPlaybackActive = false
     @Published var controlPulse = 0
     @Published var trackNavigationDirection = 1
+    var navigationCommandGeneration = 0
     @Published var trackPresentationRevision = 0
     @Published var artworkPresentationRevision = 0
     let spectrumSignal = AudioSpectrumSignal.shared
@@ -66,6 +69,16 @@ final class MusicStore: ObservableObject {
     var playbackClock: Timer?
     var workspaceObservers: [NSObjectProtocol] = []
     var isMonitoring = false
+    private let systemAudioSpectrum = SystemAudioSpectrumAdapter()
+    @Published var systemSpectrumEnabled = UserDefaults.standard.object(forKey: "systemSpectrumEnabled") as? Bool ?? true
+    @Published var systemSpectrumStatus = "settings.spectrum.idle"
+
+    func setSystemSpectrumEnabled(_ enabled: Bool) {
+        systemSpectrumEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "systemSpectrumEnabled")
+        if enabled { systemAudioSpectrum.retry() }
+        systemAudioSpectrum.setActive(enabled && isMonitoring && nowPlaying.isPlaying)
+    }
     var lastPlaybackTick = Date()
     var isFetchingNowPlaying = false
     var isFetchingUpcoming = false
@@ -111,6 +124,7 @@ final class MusicStore: ObservableObject {
     func startMonitoring() {
         guard !isMonitoring else { return }
         isMonitoring = true
+        systemAudioSpectrum.onStatus = { [weak self] in self?.systemSpectrumStatus = $0 }
         installWorkspaceObservers()
         adapterRegistry.startListening { [weak self] info in
             DispatchQueue.main.async { self?.applyTrackInfo(info) }
@@ -184,6 +198,7 @@ final class MusicStore: ObservableObject {
 
     func stopMonitoring() {
         isMonitoring = false
+        systemAudioSpectrum.setActive(false)
         timer?.invalidate()
         timer = nil
         playbackClock?.invalidate()
@@ -377,8 +392,10 @@ final class MusicStore: ObservableObject {
     }
 
     func applyAdapterSnapshot(_ snapshot: MusicAdapterSnapshot, marksSystemOwnership: Bool) {
-        let trackChanged = currentTrackIdentity != snapshot.identity
+        let trackChanged = currentTrackIdentity == nil
+            || !snapshot.matchesTrack(title: nowPlaying.title, artist: nowPlaying.artist)
         let artworkArrived = !trackChanged && nowPlaying.artwork == nil && snapshot.artwork != nil
+        let displayArtwork = ArtworkPalette.displayArtwork(from: snapshot.artwork)
         let playing = resolvedPlaybackState(snapshot.isPlaying)
         let elapsed = trackChanged
             ? elapsedForChangedTrack(snapshot.elapsed)
@@ -390,20 +407,30 @@ final class MusicStore: ObservableObject {
         let preserveLocalRating = likedOverrideUntil.map { $0 > Date() } == true
         nowPlaying = NowPlayingSnapshot(
             title: snapshot.title,
-            artist: snapshot.artist,
+            artist: !trackChanged && snapshot.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nowPlaying.artist : snapshot.artist,
             duration: duration,
             elapsed: duration > 0 ? min(elapsed, duration) : elapsed,
             isPlaying: playing,
             isLiked: preserveLocalRating ? nowPlaying.isLiked : (rating?.liked ?? (trackChanged ? false : nowPlaying.isLiked)),
             isDisliked: preserveLocalRating ? nowPlaying.isDisliked : (rating?.disliked ?? (trackChanged ? false : nowPlaying.isDisliked)),
-            artwork: trackChanged ? snapshot.artwork : (snapshot.artwork ?? nowPlaying.artwork)
+            artwork: trackChanged ? displayArtwork : (displayArtwork ?? nowPlaying.artwork)
         )
-        currentTrackIdentity = snapshot.identity
+        // Identity стабилен на протяжении дополнения метаданных: callbacks рейтинга
+        // и переход заголовка не должны считать позднего исполнителя новым треком.
+        if trackChanged { currentTrackIdentity = snapshot.identity }
         if trackChanged { trackPresentationRevision &+= 1 }
         if trackChanged || artworkArrived { artworkPresentationRevision &+= 1 }
         if marksSystemOwnership { activeMediaBundleIdentifier = selectedMusicSource.bundleIdentifier }
         updatePresentationState(isPlaying: playing)
-        if let artwork = snapshot.artwork { visualizerColors = ArtworkPalette.colors(from: artwork) }
+        // Обложка постоянна между обновлениями времени. Не декодируем её
+        // повторно на main thread при каждом опросе музыкального адаптера.
+        if (trackChanged || artworkArrived), let artwork = displayArtwork {
+            // Пока обложка в пути, сохраняем текущий свет. Промежуточный fallback
+            // создавал лишнюю смену цветов перед настоящей палитрой нового трека.
+            let palette = ArtworkPalette.colors(from: artwork)
+            if visualizerColors != palette { visualizerColors = palette }
+        }
         if trackChanged {
             likedOverrideUntil = nil
             lastUpcomingRefresh = .distantPast
@@ -432,6 +459,7 @@ final class MusicStore: ObservableObject {
     }
 
     func updatePresentationState(isPlaying: Bool) {
+        if isMonitoring { systemAudioSpectrum.setActive(systemSpectrumEnabled && isPlaying) }
         if musicPresentationActive != isPlaying { musicPresentationActive = isPlaying }
         if compactPlaybackActive != isPlaying { compactPlaybackActive = isPlaying }
         updatePlaybackClockTimer()

@@ -17,6 +17,10 @@
 "music.queueUnavailable" = "очередь недоступна";
 "music.like" = "Нравится";
 "music.dislike" = "Не нравится";
+"music.previous" = "Предыдущий трек";
+"music.next" = "Следующий трек";
+"music.play" = "Воспроизвести";
+"music.pause" = "Пауза";
 
 "clipboard.source.screenshots" = "Скриншоты";
 "clipboard.source.system" = "Буфер macOS";
@@ -124,8 +128,8 @@
 "dev.untracked" = "Новые";
 "dev.changedShort" = "Изм.";
 "dev.untrackedShort" = "Новые";
-"dev.ahead" = "Вперёд";
-"dev.behind" = "Позади";
+"dev.ahead" = "Ahead";
+"dev.behind" = "Behind";
 "dev.stash" = "Stash";
 "dev.chooseProject" = "Выбрать папку проекта";
 "dev.change" = "Сменить";
@@ -194,3 +198,21 @@
 "event.calendar.inMinutes.format" = "Через %d мин";
 "event.pomodoro.finished" = "Фокус завершён";
 "event.pomodoro.break" = "Пора немного отдохнуть";
+"settings.spectrum.title" = "Визуализатор под звук";
+"settings.spectrum.subtitle" = "Анализ системного звука во время музыки. Без микрофона, записи и отправки аудио.";
+"settings.spectrum.idle" = "Ожидание воспроизведения музыки.";
+"settings.spectrum.active" = "Захват системного звука запущен.";
+"settings.spectrum.unavailable" = "Захват звука недоступен. Проверь доступ к записи системного аудио в macOS, затем выключи и включи эту опцию для повтора.";
+"settings.spectrum.unsupported" = "Для захвата системного звука нужна macOS 14.2 или новее.";
+"clipboard.shelf.preview" = "Просмотреть";
+"clipboard.shelf.back" = "Назад";
+"clipboard.shelf.remove" = "Убрать из истории";
+"clipboard.shelf.more" = "Другие действия";
+"clipboard.shelf.pin" = "Закрепить / открепить";
+"clipboard.shelf.copied" = "Скопировано";
+"clipboard.shelf.code" = "Код";
+"clipboard.shelf.text" = "Текст";
+"clipboard.shelf.hint" = "Нажми, чтобы скопировать. Пробел — просмотр выбранной карточки. Escape — закрыть просмотр.";
+"clipboard.shelf.open" = "Открыть скриншот";
+"clipboard.shelf.screenshotHint" = "Один клик — копировать. Двойной клик — открыть скриншот в стандартном приложении.";
+"clipboard.shelf.textHint" = "Нажми, чтобы скопировать текст.";

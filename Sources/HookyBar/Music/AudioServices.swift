@@ -237,17 +237,21 @@ final class AudioSpectrumSignal: @unchecked Sendable {
     private let lock = NSLock()
     private var bands = [CGFloat](repeating: 0, count: 12)
     private var level: CGFloat = 0
+    private var updatedAt = Date()
 
     func update(bands: [CGFloat], level: CGFloat) {
         lock.lock()
         self.bands = bands
         self.level = level
+        updatedAt = Date()
         lock.unlock()
     }
 
-    func snapshot() -> (bands: [CGFloat], level: CGFloat) {
+    func snapshot(at date: Date = Date()) -> (bands: [CGFloat], level: CGFloat) {
         lock.lock()
-        let result = (bands, level)
+        let age = date.timeIntervalSince(updatedAt)
+        let decay = CGFloat(exp(-max(0, age - 0.15) / 0.2))
+        let result = (bands.map { $0 * decay }, level * decay)
         lock.unlock()
         return result
     }
