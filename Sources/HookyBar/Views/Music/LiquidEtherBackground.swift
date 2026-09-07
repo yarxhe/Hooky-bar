@@ -31,7 +31,7 @@ private struct LiquidEtherField: View, Animatable {
             // Mesh остаётся вне TimelineView: меняется только при смене палитры.
             // Это избавляет CPU от перестройки 16 цветовых ячеек каждый кадр.
             colorField(at: 0)
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !active || reduceMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !active || reduceMotion)) { timeline in
                 let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
                 flowingLight(at: time)
             }
@@ -60,8 +60,9 @@ private struct LiquidEtherField: View, Animatable {
                 background: .black,
                 smoothsColors: true
             )
-            .blur(radius: 12)
-            .scaleEffect(1.12)
+            // MeshGradient уже интерполирует поле без швов. Дополнительный
+            // полноэкранный blur создавал несколько Retina-буферов по 4–5 МБ.
+            .scaleEffect(1.04)
         } else {
             LinearGradient(
                 colors: [palette[0].opacity(0.6), palette[1].opacity(0.4), palette[2].opacity(0.2)],
@@ -72,7 +73,9 @@ private struct LiquidEtherField: View, Animatable {
     }
 
     private func flowingLight(at time: TimeInterval) -> some View {
-        Canvas(opaque: false, rendersAsynchronously: true) { context, size in
+        // SwiftUI и так композитит слой на render thread. Асинхронный Canvas
+        // держал лишние back buffers размером со всё раскрытое окно.
+        Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             context.addFilter(.blur(radius: 22))
             context.blendMode = .screen
             for layer in 0..<2 {

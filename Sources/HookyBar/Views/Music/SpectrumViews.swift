@@ -9,10 +9,12 @@ struct SpectrumView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !active || reduceMotion)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !active || reduceMotion)) { timeline in
             // Read outside the drawing closure: each timeline tick supplies fresh value data.
             let spectrum = signal.snapshot(at: timeline.date).bands
-            Canvas(opaque: false, rendersAsynchronously: true) { context, size in
+            // Этот Canvas очень маленький; отдельный асинхронный backing store
+            // дороже самого рисования и заметно увеличивает память мини-плеера.
+            Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                 let count = expanded ? 12 : 9
                 let width: CGFloat = expanded ? 3 : 2.5
                 let spacing: CGFloat = expanded ? 4 : 2

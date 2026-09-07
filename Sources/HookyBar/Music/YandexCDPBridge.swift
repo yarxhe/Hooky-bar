@@ -86,12 +86,24 @@ final class YandexCDPBridge {
             || text('[data-test-id="CURRENT_TRACK_ARTIST"]')
             || '';
           const pauseVisible = !!root?.querySelector('[data-test-id="PAUSE_BUTTON"], button[aria-label="Пауза"]');
+          const like = root?.querySelector('[data-test-id="LIKE_BUTTON"]')
+            || root?.querySelector('button[aria-label*="Нравится"], button[aria-label*="нравится"]');
+          const dislike = root?.querySelector('[data-test-id="DISLIKE_BUTTON"]')
+            || root?.querySelector('button[aria-label*="Не нравится"], button[aria-label*="не нравится"]');
+          const active = button => !!button && (
+            button.getAttribute('aria-pressed') === 'true'
+            || button.getAttribute('data-active') === 'true'
+            || ['checked', 'active', 'on'].includes(button.getAttribute('data-state'))
+            || /убрать|удалить/i.test(button.getAttribute('aria-label') || '')
+          );
           return {
             title,
             artist,
             duration: Number.isFinite(audio?.duration) ? audio.duration : 0,
             elapsed: Number.isFinite(audio?.currentTime) ? audio.currentTime : 0,
-            isPlaying: audio ? !audio.paused : pauseVisible
+            isPlaying: audio ? !audio.paused : pauseVisible,
+            liked: active(like),
+            disliked: active(dislike)
           };
         })()
         """
@@ -104,7 +116,10 @@ final class YandexCDPBridge {
             elapsed: (value["elapsed"] as? NSNumber)?.doubleValue ?? 0,
             isPlaying: value["isPlaying"] as? Bool ?? false,
             artwork: nil,
-            rating: ratingState().map { MusicRatingState(liked: $0.liked, disliked: $0.disliked) }
+            rating: MusicRatingState(
+                liked: value["liked"] as? Bool ?? false,
+                disliked: value["disliked"] as? Bool ?? false
+            )
         )
     }
 

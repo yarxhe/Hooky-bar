@@ -23,6 +23,33 @@ final class AudioSpectrumAnalyzer {
     }
 
     func append(_ sample: Float) {
+        appendBuffered(sample)
+    }
+
+    /// Принимает целый CoreAudio-буфер одним вызовом и выбирает самый сильный
+    /// канал каждого кадра. Спектр остаётся стереосовместимым даже при противофазе,
+    /// но FFT выполняется один раз
+    /// вместо отдельного анализа левого и правого каналов.
+    func appendInterleaved(
+        _ input: UnsafePointer<Float>,
+        frameCount: Int,
+        channelCount: Int
+    ) {
+        guard frameCount > 0, channelCount > 0 else { return }
+        let mixedChannels = min(channelCount, 2)
+        for frame in 0..<frameCount {
+            let offset = frame * channelCount
+            var mixed = input[offset]
+            for channel in 1..<mixedChannels {
+                let candidate = input[offset + channel]
+                if abs(candidate) > abs(mixed) { mixed = candidate }
+            }
+            appendBuffered(mixed)
+        }
+    }
+
+    @inline(__always)
+    private func appendBuffered(_ sample: Float) {
         samples[cursor] = sample.isFinite ? sample : 0
         cursor += 1
         guard cursor == count else { return }
