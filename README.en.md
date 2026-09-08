@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Version 1.3.0</strong>
+  <strong>Version 1.4.1</strong>
 </p>
 
 <p align="center">
@@ -83,6 +83,23 @@ Hooky bar displays compact notifications using the same panel geometry:
 
 A dedicated Dev page shows the selected workspace, Git branch, changed files, and latest GitHub Actions status. It also opens the project directly in your IDE, Terminal, Finder, or GitHub.
 
+### Diagnostic logging
+
+Detailed music-command and memory logging is disabled by default. After the first launch, the app creates `~/Library/Application Support/Hooky bar/config.json`:
+
+```json
+{
+  "debugLogging": false
+}
+```
+
+Set the value to `true` to enable logging. The change is picked up automatically without restarting the app. Logs include button handling, the selected Yandex Music control channel, command result and latency, CDP errors, and physical memory footprint; track names and other media metadata are not recorded.
+
+```sh
+log stream --style compact --level info \
+  --predicate 'process == "HookyBar" AND subsystem == "com.yarxhe.HookyBar"'
+```
+
 ## Screenshots
 
 Hooky bar uses one continuous surface for the mini-player, full panel, and compact notifications. Elements do not look like separate windows and animate from the same point near the notch.
@@ -129,6 +146,6 @@ Every system permission belongs to a specific feature and does not imply screen 
 
 ## Project status
 
-Hooky bar is under active development. The current stable release is **1.3.0**. Built-in features and internal adapters are stabilized; a public SDK for third-party integrations is planned after user feedback.
+Hooky bar is under active development. The current stable release is **1.4.1**. Built-in features and internal adapters are stabilized; a public SDK for third-party integrations is planned after user feedback.
 
 To build the project or contribute an integration, see [CONTRIBUTING.en.md](CONTRIBUTING.en.md).

@@ -134,6 +134,8 @@ Diagnostics only read existing state and never trigger a system permission promp
 
 A separate pure builder creates the diagnostics report, which is copied through the adapter only after the user presses the button. The report contains the app version, macOS version, and integration states; paths, clipboard contents, and media metadata are excluded.
 
+The `controls`, `yandex-bridge`, and `memory` operational logs do not contain track names either. They are disabled by default and controlled by the `debugLogging` key in `~/Library/Application Support/Hooky bar/config.json`. The configuration is reloaded while the app is running, so toggling it does not require a restart.
+
 ## Panel geometry
 
 `InterfaceModel` manages transitions, while `HookySurfaceLayout` is the single geometry source for both SwiftUI and AppKit hit testing. An integration must not resize the `NSPanel` itself. It sends an event or state to the host, and the host selects an existing surface mode.
