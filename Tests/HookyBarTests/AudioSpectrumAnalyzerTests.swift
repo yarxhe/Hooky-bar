@@ -37,4 +37,21 @@ struct AudioSpectrumAnalyzerTests {
         }
         #expect(peak(at: 100) < peak(at: 4000))
     }
+
+    @Test func interleavedStereoUsesOneCombinedSpectrum() {
+        var result: [CGFloat] = []
+        let analyzer = AudioSpectrumAnalyzer(sampleRate: 48_000) { result = $0; _ = $1 }
+        var stereo = [Float]()
+        stereo.reserveCapacity(4_096)
+        for frame in 0..<2_048 {
+            let sample = Float(sin(2 * .pi * 440 * Double(frame) / 48_000) * 0.25)
+            stereo.append(sample)
+            stereo.append(sample)
+        }
+        stereo.withUnsafeBufferPointer {
+            analyzer.appendInterleaved($0.baseAddress!, frameCount: 2_048, channelCount: 2)
+        }
+        #expect(result.count == 12)
+        #expect((result.max() ?? 0) > 0.5)
+    }
 }

@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var diagnosticsTimer: Timer?
 
     static func main() {
         let application = NSApplication.shared
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         NSApp.applicationIconImage = HookyBrandImages.image(for: .hookyBar)
+        HookyDiagnostics.bootstrap()
         configureStatusItem()
         makePanel()
         localization.$language.dropFirst().sink { [weak self] _ in
@@ -61,6 +63,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         features.start()
         updateMenuCollision()
         installWorkspaceMonitoring()
+        HookyDiagnostics.memory("event=launch")
+        diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            HookyDiagnostics.memory(
+                "event=heartbeat expanded=\(self.ui.expanded) playing=\(self.music.nowPlaying.isPlaying)"
+            )
+        }
 
         ui.$expanded.removeDuplicates()
         .sink { [weak self] expanded in
@@ -92,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         workspaceObservers.forEach(workspaceCenter.removeObserver)
         workspaceObservers.removeAll()
+        diagnosticsTimer?.invalidate()
+        diagnosticsTimer = nil
         music.stopMonitoring()
         clipboard.stopMonitoring()
         volume.stopMonitoring()
@@ -101,13 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let icon = HookyBrandImages.image(for: .hookyBar)?.copy() as? NSImage {
-            icon.size = NSSize(width: 18, height: 18)
-            icon.isTemplate = false
-            icon.accessibilityDescription = "Hooky bar"
+        if let icon = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Hooky bar") {
+            icon.isTemplate = true
             statusItem.button?.image = icon
-        } else {
-            statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Hooky bar")
         }
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: L10n.tr("app.menu.open"), action: #selector(openPanel), keyEquivalent: "n"))

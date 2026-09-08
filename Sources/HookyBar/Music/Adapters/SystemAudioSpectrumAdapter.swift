@@ -80,34 +80,27 @@ private final class ProcessTapCapture {
                 ]]
             ]
             try check(AudioHardwareCreateAggregateDevice(config as CFDictionary, &device))
-            var channelBands = Array(repeating: [CGFloat](repeating: 0, count: 12), count: 2)
             var receivedAudio = false
-            let analyzers = (0..<2).map { channel in
-                AudioSpectrumAnalyzer(sampleRate: format.mSampleRate) { bands, _ in
-                    channelBands[channel] = bands
-                    let combined = zip(channelBands[0], channelBands[1]).map { max($0, $1) }
-                    if !receivedAudio && (combined.max() ?? 0) > 0.01 {
-                        receivedAudio = true
-                        NSLog("Hooky bar: spectrum received non-silent audio")
-                    }
-                    AudioSpectrumSignal.shared.update(bands: combined, level: combined.max() ?? 0)
+            let analyzer = AudioSpectrumAnalyzer(sampleRate: format.mSampleRate) { bands, level in
+                if !receivedAudio && level > 0.01 {
+                    receivedAudio = true
+                    NSLog("Hooky bar: spectrum received non-silent audio")
                 }
+                AudioSpectrumSignal.shared.update(bands: bands, level: level)
             }
             try check(AudioDeviceCreateIOProcIDWithBlock(&ioProc, device, queue) { _, input, _, _, _ in
                 // Буферы принадлежат CoreAudio и читаются только внутри callback.
                 let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
-                var channelOffset = 0
                 for buffer in buffers {
                     guard let data = buffer.mData else { continue }
                     let channels = max(1, Int(buffer.mNumberChannels))
                     let samples = data.assumingMemoryBound(to: Float.self)
                     let frames = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size / channels
-                    for channel in 0..<min(channels, max(0, 2 - channelOffset)) {
-                        for frame in 0..<frames {
-                            analyzers[channelOffset + channel].append(samples[frame * channels + channel])
-                        }
-                    }
-                    channelOffset += channels
+                    analyzer.appendInterleaved(
+                        UnsafePointer(samples),
+                        frameCount: frames,
+                        channelCount: channels
+                    )
                 }
             })
             try check(AudioDeviceStart(device, ioProc))

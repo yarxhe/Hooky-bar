@@ -3,7 +3,11 @@ import SwiftUI
 
 extension MusicStore {
     func toggleLike() {
-        guard activeAdapter.capabilities.canLike else { return }
+        guard activeAdapter.capabilities.canLike else {
+            HookyDiagnostics.control("action=like phase=rejected reason=unsupported")
+            return
+        }
+        let startedAt = Date()
         let desired = !nowPlaying.isLiked
         let previous = MusicRatingState(liked: nowPlaying.isLiked, disliked: nowPlaying.isDisliked)
         let source = selectedMusicSource
@@ -14,11 +18,15 @@ extension MusicStore {
         if desired { nowPlaying.isDisliked = false }
         likedOverrideUntil = Date().addingTimeInterval(MusicStoreTiming.likedOverrideDuration)
         controlPulse += 1
+        HookyDiagnostics.control("action=like phase=request desired=\(desired) source=\(source.rawValue)")
         executeAdapterCommand(
             adapter: adapter,
             context: context,
             command: { $0.setLiked(desired, context: $1) }
         ) { [weak self] result in
+            HookyDiagnostics.control(
+                "action=like phase=result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
+            )
             DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.likeRecoveryDelay) {
                 guard let self,
                       self.selectedMusicSource == source,
@@ -35,7 +43,11 @@ extension MusicStore {
     }
 
     func toggleDislike() {
-        guard activeAdapter.capabilities.canDislike else { return }
+        guard activeAdapter.capabilities.canDislike else {
+            HookyDiagnostics.control("action=dislike phase=rejected reason=unsupported")
+            return
+        }
+        let startedAt = Date()
         let desired = !nowPlaying.isDisliked
         let previous = MusicRatingState(liked: nowPlaying.isLiked, disliked: nowPlaying.isDisliked)
         let source = selectedMusicSource
@@ -46,11 +58,15 @@ extension MusicStore {
         if desired { nowPlaying.isLiked = false }
         likedOverrideUntil = Date().addingTimeInterval(MusicStoreTiming.likedOverrideDuration)
         controlPulse += 1
+        HookyDiagnostics.control("action=dislike phase=request desired=\(desired) source=\(source.rawValue)")
         executeAdapterCommand(
             adapter: adapter,
             context: context,
             command: { $0.setDisliked(desired, context: $1) }
         ) { [weak self] result in
+            HookyDiagnostics.control(
+                "action=dislike phase=result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
+            )
             DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.likeRecoveryDelay) {
                 guard let self,
                       self.selectedMusicSource == source,
@@ -67,41 +83,53 @@ extension MusicStore {
     }
 
     func selectMusicSource(_ source: MusicSource) {
+        HookyDiagnostics.control("action=select_source source=\(source.rawValue)")
         selectedMusicSource = source
     }
 
     func openSelectedMusicApp() {
         let adapter = activeAdapter
         let alreadyRunning = adapter.isRunning()
+        HookyDiagnostics.control(
+            "action=open_player source=\(selectedMusicSource.rawValue) already_running=\(alreadyRunning)"
+        )
         if !alreadyRunning { clearSelectedTrack() }
         adapter.launch()
     }
 
     func togglePlayback() {
+        let startedAt = Date()
         controlPulse += 1
         let adapter = activeAdapter
         let appIsActuallyRunning = adapter.isRunning()
+        HookyDiagnostics.control(
+            "action=playback phase=request source=\(selectedMusicSource.rawValue) app_running=\(appIsActuallyRunning) store_running=\(isSelectedMusicAppRunning) track_known=\(currentTrackIdentity != nil) pending=\(pendingPlaybackStartToken != nil) expected_playing=\(!nowPlaying.isPlaying)"
+        )
         if pendingPlaybackStartToken != nil {
             // Повторный клик во время холодного старта не создаёт второй цикл
             // команд. Он только снова активирует выбранный плеер и ускоряет
             // уже существующее намерение воспроизведения.
             openSelectedMusicApp()
             resumePendingPlaybackStart()
+            HookyDiagnostics.control("action=playback phase=route route=resume_pending")
             return
         }
         if !appIsActuallyRunning {
             isSelectedMusicAppRunning = false
             openSelectedMusicApp()
             beginPendingPlaybackStart()
+            HookyDiagnostics.control("action=playback phase=route route=cold_launch")
             return
         }
         if !isSelectedMusicAppRunning {
             openSelectedMusicApp()
-            beginPendingPlaybackStart()
+            beginPendingPlaybackStart(initialDelay: MusicStoreTiming.readyPlaybackDelay)
+            HookyDiagnostics.control("action=playback phase=route route=refresh_running")
             return
         }
         if currentTrackIdentity == nil {
-            beginPendingPlaybackStart()
+            beginPendingPlaybackStart(initialDelay: MusicStoreTiming.readyPlaybackDelay)
+            HookyDiagnostics.control("action=playback phase=route route=start_without_track")
             return
         }
         cancelPendingPlaybackStart()
@@ -115,6 +143,9 @@ extension MusicStore {
             context: context,
             command: { $0.togglePlayback(context: $1) }
         ) { [weak self] result in
+            HookyDiagnostics.control(
+                "action=playback phase=result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
+            )
             guard let self, self.selectedMusicSource == source else { return }
             if !result.success {
                 self.cancelPlaybackTransition(generation: generation, restoring: previous)
@@ -123,12 +154,17 @@ extension MusicStore {
         }
     }
 
-    func beginPendingPlaybackStart() {
+    func beginPendingPlaybackStart(
+        initialDelay: TimeInterval = MusicStoreTiming.launchPlaybackDelay
+    ) {
         cancelPendingPlaybackStart()
         let token = UUID()
         pendingPlaybackStartToken = token
         pendingPlaybackStartDeadline = Date().addingTimeInterval(MusicStoreTiming.launchPlaybackTimeout)
-        schedulePendingPlaybackStart(token: token, delay: MusicStoreTiming.launchPlaybackDelay)
+        HookyDiagnostics.control(
+            "action=playback phase=pending_begin initial_delay_ms=\(Int(initialDelay * 1_000))"
+        )
+        schedulePendingPlaybackStart(token: token, delay: initialDelay)
     }
 
     func resumePendingPlaybackStart() {
@@ -150,10 +186,12 @@ extension MusicStore {
         guard pendingPlaybackStartToken == token else { return }
         guard pendingPlaybackStartInFlightToken == nil else { return }
         guard Date() < pendingPlaybackStartDeadline else {
+            HookyDiagnostics.control("action=playback phase=pending_timeout")
             cancelPendingPlaybackStart()
             return
         }
         pendingPlaybackStartInFlightToken = token
+        let startedAt = Date()
         let source = selectedMusicSource
         let adapter = activeAdapter
         refreshMusicState()
@@ -165,6 +203,9 @@ extension MusicStore {
             requiresSameTrack: false,
             command: { $0.startPlayback(context: $1) }
         ) { [weak self] result in
+            HookyDiagnostics.control(
+                "action=playback phase=pending_result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
+            )
             guard let self else { return }
             if self.pendingPlaybackStartInFlightToken == token {
                 self.pendingPlaybackStartInFlightToken = nil
@@ -205,8 +246,10 @@ extension MusicStore {
                     self.refreshMediaSnapshot()
                     if let snapshot { self.applyAdapterSnapshot(snapshot, marksSystemOwnership: false) }
                     if playing == true {
+                        HookyDiagnostics.control("action=playback phase=verified playing=true")
                         self.cancelPendingPlaybackStart()
                     } else {
+                        HookyDiagnostics.control("action=playback phase=verified playing=\(String(describing: playing)) retry=true")
                         self.schedulePendingPlaybackStart(
                             token: token,
                             delay: MusicStoreTiming.retryPlaybackDelay
@@ -230,7 +273,9 @@ extension MusicStore {
         manualTrackChangePending = true
         ignoreRemoteElapsedUntil = Date().addingTimeInterval(3)
         controlPulse += 1
-        performNavigationCommand { adapter, context in adapter.previousTrack(context: context) }
+        performNavigationCommand(action: "previous") { adapter, context in
+            adapter.previousTrack(context: context)
+        }
     }
 
     func nextTrack() {
@@ -238,12 +283,17 @@ extension MusicStore {
         manualTrackChangePending = true
         ignoreRemoteElapsedUntil = Date().addingTimeInterval(3)
         controlPulse += 1
-        performNavigationCommand { adapter, context in adapter.nextTrack(context: context) }
+        performNavigationCommand(action: "next") { adapter, context in
+            adapter.nextTrack(context: context)
+        }
     }
 
     func performNavigationCommand(
+        action: String,
         _ command: @escaping (any MusicPlayerAdapter, MusicCommandContext) -> MusicAdapterResult
     ) {
+        let startedAt = Date()
+        HookyDiagnostics.control("action=\(action) phase=request source=\(selectedMusicSource.rawValue)")
         navigationCommandGeneration &+= 1
         let generation = navigationCommandGeneration
         let source = selectedMusicSource
@@ -252,6 +302,9 @@ extension MusicStore {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = command(adapter, context)
             DispatchQueue.main.async {
+                HookyDiagnostics.control(
+                    "action=\(action) phase=result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
+                )
                 guard let self, self.selectedMusicSource == source,
                       self.navigationCommandGeneration == generation else { return }
                 if !result.success {
@@ -291,6 +344,7 @@ extension MusicStore {
 
     func finishScrubbing(at destination: Double) {
         guard isSelectedMusicAppRunning, activeAdapter.capabilities.canSeek else {
+            HookyDiagnostics.control("action=seek phase=rejected reason=unavailable")
             isScrubbingPlayback = false
             ignoreRemoteElapsedUntil = .distantPast
             return
@@ -302,9 +356,14 @@ extension MusicStore {
         let source = selectedMusicSource
         let adapter = activeAdapter
         let context = commandContext
+        let startedAt = Date()
+        HookyDiagnostics.control("action=seek phase=request source=\(source.rawValue)")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = adapter.seek(to: clamped, context: context)
             DispatchQueue.main.async {
+                HookyDiagnostics.control(
+                    "action=seek phase=result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
+                )
                 guard let self, self.selectedMusicSource == source else { return }
                 if !result.success { self.ignoreRemoteElapsedUntil = .distantPast }
                 self.refreshMediaSnapshot()
