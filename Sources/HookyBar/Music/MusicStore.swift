@@ -19,6 +19,7 @@ enum MusicStoreTiming {
     static let navigationRefreshDelay: TimeInterval = 0.3
     static let likeRecoveryDelay: TimeInterval = 0.35
     static let launchPlaybackDelay: TimeInterval = 0.45
+    static let readyPlaybackDelay: TimeInterval = 0.08
     static let retryPlaybackDelay: TimeInterval = 0.35
     static let postCommandSnapshotDelay: TimeInterval = 0.45
     static let launchPlaybackTimeout: TimeInterval = 25

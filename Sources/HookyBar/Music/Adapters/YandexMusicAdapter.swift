@@ -64,56 +64,105 @@ final class YandexMusicAdapter: MusicPlayerAdapter {
     }
 
     func startPlayback(context: MusicCommandContext) -> MusicAdapterResult {
-        if cdp.startPlaybackIfNeeded() || accessibility.startPlaybackIfNeeded() {
-            return .success
-        }
-        return systemFallback(context) { mediaController.play() }
+        let startedAt = Date()
+        if cdp.startPlaybackIfNeeded() { return logged(.success, action: "start", channel: "cdp", since: startedAt) }
+        if accessibility.startPlaybackIfNeeded() { return logged(.success, action: "start", channel: "accessibility", since: startedAt) }
+        return logged(
+            currentPlayerSystemFallback(context) { mediaController.play() },
+            action: "start", channel: "media_remote", since: startedAt
+        )
     }
 
     func togglePlayback(context: MusicCommandContext) -> MusicAdapterResult {
-        if cdp.playPause() || accessibility.playPause() {
-            return .success
-        }
-        return systemFallback(context) { mediaController.togglePlayPause() }
+        let startedAt = Date()
+        if cdp.playPause() { return logged(.success, action: "toggle", channel: "cdp", since: startedAt) }
+        if accessibility.playPause() { return logged(.success, action: "toggle", channel: "accessibility", since: startedAt) }
+        return logged(
+            currentPlayerSystemFallback(context) { mediaController.togglePlayPause() },
+            action: "toggle", channel: "media_remote", since: startedAt
+        )
     }
 
     func nextTrack(context: MusicCommandContext) -> MusicAdapterResult {
-        if cdp.nextTrack() || accessibility.nextTrack() {
-            return .success
-        }
-        return systemFallback(context) { mediaController.nextTrack() }
+        let startedAt = Date()
+        if cdp.nextTrack() { return logged(.success, action: "next", channel: "cdp", since: startedAt) }
+        if accessibility.nextTrack() { return logged(.success, action: "next", channel: "accessibility", since: startedAt) }
+        return logged(
+            currentPlayerSystemFallback(context) { mediaController.nextTrack() },
+            action: "next", channel: "media_remote", since: startedAt
+        )
     }
 
     func previousTrack(context: MusicCommandContext) -> MusicAdapterResult {
-        if cdp.previousTrack() || accessibility.previousTrack() {
-            return .success
-        }
-        return systemFallback(context) { mediaController.previousTrack() }
+        let startedAt = Date()
+        if cdp.previousTrack() { return logged(.success, action: "previous", channel: "cdp", since: startedAt) }
+        if accessibility.previousTrack() { return logged(.success, action: "previous", channel: "accessibility", since: startedAt) }
+        return logged(
+            currentPlayerSystemFallback(context) { mediaController.previousTrack() },
+            action: "previous", channel: "media_remote", since: startedAt
+        )
     }
 
     func seek(to seconds: Double, context: MusicCommandContext) -> MusicAdapterResult {
+        let startedAt = Date()
         if cdp.seek(to: seconds) {
-            return .success
+            return logged(.success, action: "seek", channel: "cdp", since: startedAt)
         }
-        return systemFallback(context) { mediaController.setTime(seconds: seconds) }
+        return logged(
+            currentPlayerSystemFallback(context) { mediaController.setTime(seconds: seconds) },
+            action: "seek", channel: "media_remote", since: startedAt
+        )
     }
 
     func setLiked(_ desired: Bool, context: MusicCommandContext) -> MusicAdapterResult {
-        if cdp.setLiked(desired) || accessibility.setLiked(desired) {
-            return .success
-        }
-        return systemFallback(context) {
+        let startedAt = Date()
+        if cdp.setLiked(desired) { return logged(.success, action: "like", channel: "cdp", since: startedAt) }
+        if accessibility.setLiked(desired) { return logged(.success, action: "like", channel: "accessibility", since: startedAt) }
+        let result = currentPlayerSystemFallback(context) {
             if desired { mediaController.addToWishList() }
             else { mediaController.removeFromWishList() }
         }
+        return logged(result, action: "like", channel: "media_remote", since: startedAt)
     }
 
     func setDisliked(_ desired: Bool, context: MusicCommandContext) -> MusicAdapterResult {
-        if cdp.setDisliked(desired) || accessibility.setDisliked(desired) {
-            return .success
+        let startedAt = Date()
+        if cdp.setDisliked(desired) { return logged(.success, action: "dislike", channel: "cdp", since: startedAt) }
+        if accessibility.setDisliked(desired) { return logged(.success, action: "dislike", channel: "accessibility", since: startedAt) }
+        guard desired else {
+            return logged(.failure(.notSupported), action: "dislike", channel: "none", since: startedAt)
         }
-        guard desired else { return .failure(.notSupported) }
-        return systemFallback(context) { mediaController.banTrack() }
+        return logged(
+            currentPlayerSystemFallback(context) { mediaController.banTrack() },
+            action: "dislike", channel: "media_remote", since: startedAt
+        )
+    }
+
+    private func logged(
+        _ result: MusicAdapterResult,
+        action: String,
+        channel: String,
+        since startedAt: Date
+    ) -> MusicAdapterResult {
+        HookyDiagnostics.control(
+            "adapter=yandex action=\(action) channel=\(channel) success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
+        )
+        return result
+    }
+
+    /// The store's ownership flag is updated asynchronously by MediaRemote and
+    /// can briefly be stale after Yandex changes playback state. Re-read the
+    /// current system snapshot before rejecting a fallback command, while still
+    /// refusing to control a different media application.
+    private func currentPlayerSystemFallback(
+        _ context: MusicCommandContext,
+        _ command: () -> Void
+    ) -> MusicAdapterResult {
+        guard context.ownsSystemMedia || superDirectSnapshot() != nil else {
+            return .failure(.systemMediaNotOwned)
+        }
+        command()
+        return .success
     }
 
     private func superDirectSnapshot() -> MusicAdapterSnapshot? {

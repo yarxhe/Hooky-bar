@@ -13,20 +13,19 @@ final class YandexCDPBridge {
 
     private let endpoint: URL
     private let expectedBundleIdentifier: String
-    private var session: URLSession
     private let operationLock = NSLock()
+    private let commandLock = NSLock()
     private let ownershipLock = NSLock()
+    private let targetLock = NSLock()
+    private let requestIDLock = NSLock()
     private var cachedOwnerValidation: (date: Date, isValid: Bool)?
-    private var cachedTarget: (date: Date, url: URL)?
-    private var socketTask: URLSessionWebSocketTask?
-    private var socketURL: URL?
-    private var discardedSocketCount = 0
+    private var cachedTarget: URL?
+    private var nextRequestID = 0
 
     init(port: UInt16, expectedBundleIdentifier: String) {
         self.port = port
         self.expectedBundleIdentifier = expectedBundleIdentifier
         endpoint = URL(string: "http://127.0.0.1:\(port)/json/list")!
-        session = Self.makeSession()
     }
 
     /// A high, installation-specific port avoids exposing the conventional
@@ -134,7 +133,7 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression)
+        return evaluateBool(expression, freshConnection: true)
     }
 
     /// Starts playback without turning it back off when the launch path retries.
@@ -153,7 +152,7 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression)
+        return evaluateBool(expression, freshConnection: true)
     }
 
     func previousTrack() -> Bool {
@@ -180,7 +179,7 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression)
+        return evaluateBool(expression, freshConnection: true)
     }
 
     func setDisliked(_ desired: Bool) -> Bool {
@@ -198,7 +197,7 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression)
+        return evaluateBool(expression, freshConnection: true)
     }
 
     func toggleDislike() -> Bool {
@@ -240,7 +239,7 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression)
+        return evaluateBool(expression, freshConnection: true)
     }
 
     /// The regular player exposes its queue in the DOM. Vibe currently does not,
@@ -299,63 +298,99 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression)
+        return evaluateBool(expression, freshConnection: true)
     }
 
-    private func evaluateBool(_ expression: String) -> Bool {
-        evaluate(expression) as? Bool ?? false
+    private func evaluateBool(_ expression: String, freshConnection: Bool = false) -> Bool {
+        evaluate(expression, freshConnection: freshConnection) as? Bool ?? false
     }
 
-    private func evaluate(_ expression: String) -> Any? {
-        operationLock.lock()
-        defer { operationLock.unlock() }
-        guard let socketURL = targetWebSocketURL() else { return nil }
+    private func evaluate(_ expression: String, freshConnection: Bool = false) -> Any? {
+        let evaluationLock = freshConnection ? commandLock : operationLock
+        evaluationLock.lock()
+        defer { evaluationLock.unlock() }
+        let evaluationStartedAt = Date()
 
-        let task = connectedSocket(for: socketURL)
-        let request: [String: Any] = [
-            "id": 1,
-            "method": "Runtime.evaluate",
-            "params": ["expression": expression, "returnByValue": true, "awaitPromise": true]
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: request),
-              let string = String(data: data, encoding: .utf8) else {
-            return nil
-        }
+        // Yandex Electron retires idle DevTools sockets after only a few seconds.
+        // A short-lived ephemeral session avoids both stale-socket latency and
+        // CFNetwork retaining completed WebSocket buffers for the app lifetime.
+        for attempt in 0..<2 {
+            guard let socketURL = targetWebSocketURL() else { return nil }
+            let transientSession = Self.makeSession()
+            let task = transientSession.webSocketTask(with: socketURL)
+            task.resume()
+            let requestID = makeRequestID()
+            let request: [String: Any] = [
+                "id": requestID,
+                "method": "Runtime.evaluate",
+                "params": [
+                    "expression": expression,
+                    "returnByValue": true,
+                    "awaitPromise": true,
+                    // Chromium may reject media playback initiated by an evaluated
+                    // synthetic click unless DevTools marks it as a user gesture.
+                    "userGesture": true
+                ]
+            ]
+            guard let data = try? JSONSerialization.data(withJSONObject: request),
+                  let string = String(data: data, encoding: .utf8) else { return nil }
 
-        let semaphore = DispatchSemaphore(value: 0)
-        var responseData: Data?
-        Task {
-            do {
-                try await task.send(.string(string))
-                let message = try await task.receive()
-                switch message {
-                case .string(let value): responseData = value.data(using: .utf8)
-                case .data(let value): responseData = value
-                @unknown default: break
+            let semaphore = DispatchSemaphore(value: 0)
+            var responseData: Data?
+            Task {
+                do {
+                    try await task.send(.string(string))
+                    let message = try await task.receive()
+                    switch message {
+                    case .string(let value): responseData = value.data(using: .utf8)
+                    case .data(let value): responseData = value
+                    @unknown default: break
+                    }
+                } catch {}
+                semaphore.signal()
+            }
+            let completed = semaphore.wait(timeout: .now() + 2.5) == .success
+            if completed,
+               let responseData,
+               let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+               (response["id"] as? NSNumber)?.intValue == requestID,
+               let result = response["result"] as? [String: Any],
+               let remote = result["result"] as? [String: Any] {
+                task.cancel(with: .normalClosure, reason: nil)
+                transientSession.finishTasksAndInvalidate()
+                if freshConnection {
+                    HookyDiagnostics.bridge(
+                        "event=command_response attempt=\(attempt + 1) latency_ms=\(Int(Date().timeIntervalSince(evaluationStartedAt) * 1_000))"
+                    )
                 }
-            } catch {}
-            semaphore.signal()
+                return remote["value"]
+            }
+
+            task.cancel(with: .goingAway, reason: nil)
+            transientSession.invalidateAndCancel()
+            HookyDiagnostics.bridge(
+                "event=evaluate_failure mode=\(freshConnection ? "command" : "background") attempt=\(attempt + 1)",
+                isError: true
+            )
+            clearCachedTarget()
+            if attempt == 0 { continue }
         }
-        let completed = semaphore.wait(timeout: .now() + 2.5) == .success
-        if !completed || responseData == nil {
-            invalidateSocket(task)
-        }
-        guard let responseData,
-              let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
-              let result = response["result"] as? [String: Any],
-              let remote = result["result"] as? [String: Any] else { return nil }
-        return remote["value"]
+        return nil
     }
 
     private func targetWebSocketURL() -> URL? {
-        guard debuggerBelongsToExpectedApplication() else { return nil }
-        if let cachedTarget,
-           Date().timeIntervalSince(cachedTarget.date) < 3 {
-            return cachedTarget.url
+        guard debuggerBelongsToExpectedApplication() else {
+            clearCachedTarget()
+            return nil
         }
+        // The page target remains valid for the lifetime of its renderer. A
+        // failed WebSocket command clears this cache and discovers a new target;
+        // polling /json/list every few seconds only accumulated CFNetwork tasks.
+        if let cachedTarget = cachedTargetURL() { return cachedTarget }
+        let discoverySession = Self.makeSession()
         let semaphore = DispatchSemaphore(value: 0)
         var result: URL?
-        session.dataTask(with: endpoint) { [port] data, response, _ in
+        discoverySession.dataTask(with: endpoint) { [port] data, response, _ in
             defer { semaphore.signal() }
             guard let http = response as? HTTPURLResponse,
                   http.statusCode == 200,
@@ -367,38 +402,39 @@ final class YandexCDPBridge {
                   Self.isTrustedWebSocketURL(candidate, port: port) else { return }
             result = candidate
         }.resume()
-        _ = semaphore.wait(timeout: .now() + 2.2)
-        if let result { cachedTarget = (Date(), result) }
+        let completed = semaphore.wait(timeout: .now() + 2.2) == .success
+        if completed {
+            discoverySession.finishTasksAndInvalidate()
+        } else {
+            discoverySession.invalidateAndCancel()
+        }
+        if let result { storeCachedTarget(result) }
         return result
     }
 
-    /// CDP supports many sequential commands over one connection. Reusing it
-    /// prevents URLSession from retaining hundreds of completed WebSocket tasks.
-    private func connectedSocket(for url: URL) -> URLSessionWebSocketTask {
-        if let socketTask, socketURL == url { return socketTask }
-        socketTask?.cancel(with: .goingAway, reason: nil)
-        let task = session.webSocketTask(with: url)
-        socketTask = task
-        socketURL = url
-        task.resume()
-        return task
+    private func cachedTargetURL() -> URL? {
+        targetLock.lock()
+        defer { targetLock.unlock() }
+        return cachedTarget
     }
 
-    private func invalidateSocket(_ task: URLSessionWebSocketTask) {
-        task.cancel(with: .goingAway, reason: nil)
-        if socketTask === task {
-            socketTask = nil
-            socketURL = nil
-            discardedSocketCount += 1
-            // CFNetwork retains completed task metrics for the lifetime of a
-            // session. Yandex Electron closes CDP sockets periodically, so
-            // rotate the ephemeral session and keep that storage bounded.
-            if discardedSocketCount >= 8 {
-                session.invalidateAndCancel()
-                session = Self.makeSession()
-                discardedSocketCount = 0
-            }
-        }
+    private func storeCachedTarget(_ url: URL) {
+        targetLock.lock()
+        cachedTarget = url
+        targetLock.unlock()
+    }
+
+    private func clearCachedTarget() {
+        targetLock.lock()
+        cachedTarget = nil
+        targetLock.unlock()
+    }
+
+    private func makeRequestID() -> Int {
+        requestIDLock.lock()
+        defer { requestIDLock.unlock() }
+        nextRequestID &+= 1
+        return nextRequestID
     }
 
     private static func makeSession() -> URLSession {
@@ -418,7 +454,7 @@ final class YandexCDPBridge {
 
         if let cachedOwnerValidation,
            cachedOwnerValidation.isValid,
-           Date().timeIntervalSince(cachedOwnerValidation.date) < 3 {
+           Date().timeIntervalSince(cachedOwnerValidation.date) < 15 {
             return true
         }
 
