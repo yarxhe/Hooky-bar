@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         NSApp.applicationIconImage = HookyBrandImages.image(for: .hookyBar)
+        HookyDiagnostics.bootstrap()
         configureStatusItem()
         makePanel()
         localization.$language.dropFirst().sink { [weak self] _ in
@@ -111,13 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let icon = HookyBrandImages.image(for: .hookyBar)?.copy() as? NSImage {
-            icon.size = NSSize(width: 18, height: 18)
-            icon.isTemplate = false
-            icon.accessibilityDescription = "Hooky bar"
+        if let icon = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Hooky bar") {
+            icon.isTemplate = true
             statusItem.button?.image = icon
-        } else {
-            statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Hooky bar")
         }
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: L10n.tr("app.menu.open"), action: #selector(openPanel), keyEquivalent: "n"))
