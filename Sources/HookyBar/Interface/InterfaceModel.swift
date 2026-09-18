@@ -8,11 +8,11 @@ final class InterfaceModel: ObservableObject {
     private(set) var tabDirection: CGFloat = 1
     @Published var notchWidth: CGFloat = 204
     @Published var notchHeight: CGFloat = 32
-    @Published var hideLeftMusicWing = false
+    @Published var compactLeadingWingWidth: CGFloat = MenuBarCollisionDetector.maximumWingWidth
+    @Published var compactTrailingWingWidth: CGFloat = MenuBarCollisionDetector.maximumWingWidth
     @Published var screenshotPreview: URL?
     @Published var showScreenshotSuccess = false
     @Published var collapseSurfaceVisible = false
-    @Published private(set) var glassRevision: UInt = 0
     private var pendingCollapse: DispatchWorkItem?
     private var pendingContentSwap: DispatchWorkItem?
     private var pendingShellDismissal: DispatchWorkItem?
@@ -24,7 +24,9 @@ final class InterfaceModel: ObservableObject {
     func selectTab(_ value: Int) {
         guard value != tab else { return }
         tabDirection = value > tab ? 1 : -1
-        withAnimation(HookyMotion.tabSwitch) { tab = value }
+        // Page motion is native; each piece of chrome owns its local animation.
+        // A root transaction also animates unrelated layout and page insertion.
+        tab = value
     }
 
     func pointerInside(_ inside: Bool) {
@@ -49,7 +51,6 @@ final class InterfaceModel: ObservableObject {
             pendingShellDismissal?.cancel()
             setCollapseSurfaceVisible(false)
             guard !expanded else { return }
-            refreshGlassLayers()
             setContentExpanded(true)
             withAnimation(HookyMotion.expandFromCompact) { expanded = true }
         } else {
@@ -64,7 +65,6 @@ final class InterfaceModel: ObservableObject {
         pendingShellDismissal?.cancel()
         pendingSuccessDismissal?.cancel()
         setCollapseSurfaceVisible(false)
-        refreshGlassLayers()
         setContentExpanded(true)
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -96,7 +96,7 @@ final class InterfaceModel: ObservableObject {
         collapseContent { [weak self] in
             guard let self else { return }
             self.screenshotPreview = nil
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.7)) {
+            withAnimation(.snappy(duration: 0.22)) {
                 self.showScreenshotSuccess = true
             }
             let dismissal = DispatchWorkItem { [weak self] in
@@ -136,20 +136,17 @@ final class InterfaceModel: ObservableObject {
     }
 
     private func setContentExpanded(_ value: Bool) {
+        guard contentExpanded != value else { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { contentExpanded = value }
     }
 
     private func setCollapseSurfaceVisible(_ value: Bool) {
+        guard collapseSurfaceVisible != value else { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { collapseSurfaceVisible = value }
     }
 
-    private func refreshGlassLayers() {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) { glassRevision &+= 1 }
-    }
 }

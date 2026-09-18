@@ -12,6 +12,7 @@ extension MusicStore {
         let previous = MusicRatingState(liked: nowPlaying.isLiked, disliked: nowPlaying.isDisliked)
         let source = selectedMusicSource
         let identity = currentTrackIdentity
+        let adapterGeneration = adapterRequestGeneration
         let adapter = activeAdapter
         let context = commandContext
         nowPlaying.isLiked = desired
@@ -29,6 +30,7 @@ extension MusicStore {
             )
             DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.likeRecoveryDelay) {
                 guard let self,
+                      self.adapterRequestGeneration == adapterGeneration,
                       self.selectedMusicSource == source,
                       self.currentTrackIdentity == identity
                 else { return }
@@ -52,6 +54,7 @@ extension MusicStore {
         let previous = MusicRatingState(liked: nowPlaying.isLiked, disliked: nowPlaying.isDisliked)
         let source = selectedMusicSource
         let identity = currentTrackIdentity
+        let adapterGeneration = adapterRequestGeneration
         let adapter = activeAdapter
         let context = commandContext
         nowPlaying.isDisliked = desired
@@ -69,6 +72,7 @@ extension MusicStore {
             )
             DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.likeRecoveryDelay) {
                 guard let self,
+                      self.adapterRequestGeneration == adapterGeneration,
                       self.selectedMusicSource == source,
                       self.currentTrackIdentity == identity
                 else { return }
@@ -296,26 +300,41 @@ extension MusicStore {
         HookyDiagnostics.control("action=\(action) phase=request source=\(selectedMusicSource.rawValue)")
         navigationCommandGeneration &+= 1
         let generation = navigationCommandGeneration
+        let adapterGeneration = adapterRequestGeneration
         let source = selectedMusicSource
         let adapter = activeAdapter
         let context = commandContext
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self,
+                  self.adapterRequestGeneration == adapterGeneration,
+                  self.selectedMusicSource == source,
+                  self.navigationCommandGeneration == generation else { return }
             let result = command(adapter, context)
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 HookyDiagnostics.control(
                     "action=\(action) phase=result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
                 )
-                guard let self, self.selectedMusicSource == source,
+                guard let self,
+                      self.adapterRequestGeneration == adapterGeneration,
+                      self.selectedMusicSource == source,
                       self.navigationCommandGeneration == generation else { return }
                 if !result.success {
                     self.finishUnconfirmedNavigation(generation: generation)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.navigationRefreshDelay) { [weak self] in
-                    self?.refreshMediaSnapshot()
-                    self?.recoverSelectedPlaybackPresentation()
+                    guard let self,
+                          self.isMonitoring,
+                          self.adapterRequestGeneration == adapterGeneration,
+                          self.selectedMusicSource == source,
+                          self.navigationCommandGeneration == generation else { return }
+                    self.refreshMediaSnapshot()
+                    self.recoverSelectedPlaybackPresentation()
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                    self?.finishUnconfirmedNavigation(generation: generation)
+                    guard let self,
+                          self.adapterRequestGeneration == adapterGeneration,
+                          self.selectedMusicSource == source else { return }
+                    self.finishUnconfirmedNavigation(generation: generation)
                 }
             }
         }
@@ -354,17 +373,22 @@ extension MusicStore {
         ignoreRemoteElapsedUntil = Date().addingTimeInterval(MusicStoreTiming.recoveryThrottleInterval)
         nowPlaying.elapsed = clamped
         let source = selectedMusicSource
+        let adapterGeneration = adapterRequestGeneration
         let adapter = activeAdapter
         let context = commandContext
         let startedAt = Date()
         HookyDiagnostics.control("action=seek phase=request source=\(source.rawValue)")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self,
+                  self.adapterRequestGeneration == adapterGeneration,
+                  self.selectedMusicSource == source else { return }
             let result = adapter.seek(to: clamped, context: context)
             DispatchQueue.main.async {
                 HookyDiagnostics.control(
                     "action=seek phase=result success=\(result.success) latency_ms=\(Int(Date().timeIntervalSince(startedAt) * 1_000)) error=\(String(describing: result.error))"
                 )
-                guard let self, self.selectedMusicSource == source else { return }
+                guard self.adapterRequestGeneration == adapterGeneration,
+                      self.selectedMusicSource == source else { return }
                 if !result.success { self.ignoreRemoteElapsedUntil = .distantPast }
                 self.refreshMediaSnapshot()
             }

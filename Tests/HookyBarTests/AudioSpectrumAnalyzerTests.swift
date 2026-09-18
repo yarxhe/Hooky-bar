@@ -13,6 +13,18 @@ struct AudioSpectrumAnalyzerTests {
         #expect(stale.bands.allSatisfy { $0 < 0.001 })
     }
 
+    @Test func simulatedSpectrumIsDeterministicAndBounded() {
+        let date = Date(timeIntervalSinceReferenceDate: 123_456)
+        let first = AudioSpectrumSignal.simulatedBands(at: date)
+        let second = AudioSpectrumSignal.simulatedBands(at: date)
+        let later = AudioSpectrumSignal.simulatedBands(at: date.addingTimeInterval(0.2))
+
+        #expect(first.count == 12)
+        #expect(first == second)
+        #expect(first.allSatisfy { (0.08...0.92).contains($0) })
+        #expect(first != later)
+    }
+
     @Test func silenceAndInvalidSamplesRemainSilent() {
         var result: [CGFloat] = []
         let analyzer = AudioSpectrumAnalyzer(sampleRate: 48000) { result = $0; _ = $1 }

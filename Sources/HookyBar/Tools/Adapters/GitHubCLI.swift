@@ -1,4 +1,29 @@
 import Foundation
+import Darwin
+
+private final class BoundedProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private let limit: Int
+
+    init(limit: Int = 2 * 1_024 * 1_024) {
+        self.limit = limit
+    }
+
+    func append(_ incoming: Data) {
+        guard !incoming.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        let remaining = max(0, limit - data.count)
+        if remaining > 0 { data.append(incoming.prefix(remaining)) }
+    }
+
+    func snapshot() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return data
+    }
+}
 
 struct GitHubRepositoryContext {
     let repository: String
@@ -30,17 +55,35 @@ enum GitHubCLI {
     static func run(
         executable: String,
         arguments: [String],
-        acceptedExitCodes: Set<Int32> = [0]
+        acceptedExitCodes: Set<Int32> = [0],
+        timeout: TimeInterval = 8
     ) -> String? {
         let process = Process()
         let output = Pipe()
+        let collectedOutput = BoundedProcessOutput()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
+        output.fileHandleForReading.readabilityHandler = { handle in
+            collectedOutput.append(handle.availableData)
+        }
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         do { try process.run() } catch { return nil }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            if finished.wait(timeout: .now() + 0.5) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + 0.5)
+            }
+            output.fileHandleForReading.readabilityHandler = nil
+            collectedOutput.append(output.fileHandleForReading.readDataToEndOfFile())
+            return nil
+        }
+        output.fileHandleForReading.readabilityHandler = nil
+        collectedOutput.append(output.fileHandleForReading.readDataToEndOfFile())
+        let data = collectedOutput.snapshot()
         guard acceptedExitCodes.contains(process.terminationStatus) else { return nil }
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }

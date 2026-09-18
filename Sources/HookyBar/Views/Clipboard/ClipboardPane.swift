@@ -59,6 +59,7 @@ struct ClipboardPane: View {
     @StateObject private var state = ClipboardPaneState()
 
     private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+    private let toolbarCornerRadius: CGFloat = 9
 
     private var visibleItems: [ClipboardItem] {
         let filtered = clipboard.items.compactMap { item -> (item: ClipboardItem, score: Int)? in
@@ -104,6 +105,9 @@ struct ClipboardPane: View {
                             )
                         }
                     }
+                    // Отделяем первую строку карточек от панели поиска и фильтров:
+                    // иначе обводка визуально почти соприкасается с кнопками.
+                    .padding(.top, 10)
                     // Даёт последней, в том числе неполной, строке подняться над нижним краем.
                     .padding(.bottom, scrollRunway(for: displayedItems.count))
                     .background(ClipboardScrollObserver { state.updateScrollOffset($0) })
@@ -112,8 +116,7 @@ struct ClipboardPane: View {
                 .clipped()
             }
         }
-        .padding(.horizontal, 12)
-        .onDisappear { ThumbnailLoader.trimCache() }
+        .padding(.horizontal, 18)
     }
 
     private func scrollRunway(for itemCount: Int) -> CGFloat {
@@ -135,7 +138,10 @@ struct ClipboardPane: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.88)))
                 }
                 if !state.query.isEmpty {
-                    Button { state.query = "" } label: {
+                    Button {
+                        HookyDiagnostics.control("action=clipboard_search_clear phase=applied")
+                        state.query = ""
+                    } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.white.opacity(0.38))
                     }
@@ -144,10 +150,15 @@ struct ClipboardPane: View {
               }
               .padding(.horizontal, 10)
               .frame(height: 32)
-              .hookyGlass(cornerRadius: 9, interactive: true)
+              .hookyMaterial(cornerRadius: toolbarCornerRadius)
 
                 Button {
-                    guard clipboard.clearUnpinnedHistory() > 0 else { return }
+                    let removed = clipboard.clearUnpinnedHistory()
+                    guard removed > 0 else {
+                        HookyDiagnostics.control("action=clipboard_clear phase=rejected reason=empty")
+                        return
+                    }
+                    HookyDiagnostics.control("action=clipboard_clear phase=applied removed=\(removed)")
                     state.showHistoryCleared()
                 } label: {
                     Image(systemName: state.historyCleared ? "checkmark" : "trash.fill")
@@ -155,12 +166,11 @@ struct ClipboardPane: View {
                         .foregroundStyle(state.historyCleared ? .green : .white.opacity(0.9))
                         .contentTransition(.symbolEffect(.replace))
                         .frame(width: 40, height: 32)
-                        .hookyGlass(cornerRadius: 16, interactive: true)
-                        .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 1))
-                        .contentShape(Rectangle())
+                        .hookyMaterial(cornerRadius: toolbarCornerRadius)
+                        .contentShape(RoundedRectangle(cornerRadius: toolbarCornerRadius, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .contentShape(Rectangle())
+                .contentShape(RoundedRectangle(cornerRadius: toolbarCornerRadius, style: .continuous))
                 .disabled(!clipboard.hasClearableItems)
                 .help(L10n.tr(
                     state.historyCleared
@@ -172,8 +182,8 @@ struct ClipboardPane: View {
 
             if !state.controlsCompact {
                 expandedFilterRow
-                    // Glass-композитор может продолжать рисовать слой с нулевой
-                    // высотой. При сворачивании удаляем строку сразу из иерархии.
+                    // Material-backed views can keep rendering at zero height.
+                    // Remove the row from the hierarchy as soon as it collapses.
                     .transition(.asymmetric(insertion: .opacity, removal: .identity))
             }
         }
@@ -183,19 +193,23 @@ struct ClipboardPane: View {
     private var expandedFilterRow: some View {
         HStack(spacing: 5) {
             ForEach(ClipboardFilter.allCases) { option in
-                Button { state.filter = option } label: {
+                Button {
+                    state.filter = option
+                    HookyDiagnostics.control("action=clipboard_filter phase=applied target=\(option.id)")
+                } label: {
                     Label(option.title, systemImage: option.symbol)
                         .font(.system(size: 9, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 24)
-                        .hookyGlass(
+                        .hookyMaterial(
                             enabled: state.filter == option,
-                            cornerRadius: 8,
-                            interactive: true
+                            cornerRadius: 8
                         )
                         .foregroundStyle(state.filter == option ? .white : .white.opacity(0.42))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("hooky.clipboard.filter.\(option)")
+                .accessibilityValue(state.filter == option ? "selected" : "unselected")
             }
         }
         .frame(height: 24)
@@ -204,7 +218,10 @@ struct ClipboardPane: View {
     private var compactFilterMenu: some View {
         Menu {
             ForEach(ClipboardFilter.allCases) { option in
-                Button { state.filter = option } label: {
+                Button {
+                    state.filter = option
+                    HookyDiagnostics.control("action=clipboard_filter phase=applied target=\(option.id)")
+                } label: {
                     Label(option.title, systemImage: option.symbol)
                 }
             }

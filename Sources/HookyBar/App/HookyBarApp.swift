@@ -29,8 +29,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var subscriptions = Set<AnyCancellable>()
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
+    private let pointerMonitorLock = NSLock()
+    private var globalPointerUpdatePending = false
     private var workspaceObservers: [NSObjectProtocol] = []
     private var diagnosticsTimer: Timer?
+    private var menuCollisionTimer: Timer?
 
     static func main() {
         let application = NSApplication.shared
@@ -63,11 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         features.start()
         updateMenuCollision()
         installWorkspaceMonitoring()
+        menuCollisionTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
+            guard let self, !self.ui.expanded else { return }
+            self.updateMenuCollision()
+        }
         HookyDiagnostics.memory("event=launch")
         diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             guard let self else { return }
             HookyDiagnostics.memory(
-                "event=heartbeat expanded=\(self.ui.expanded) playing=\(self.music.nowPlaying.isPlaying)"
+                "event=heartbeat expanded=\(self.ui.expanded) tab=\(self.ui.tab) playing=\(self.music.nowPlaying.isPlaying)"
             )
         }
 
@@ -75,13 +82,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .sink { [weak self] expanded in
             guard let self else { return }
             if expanded {
+                self.stopGlobalPointerMonitoring()
                 self.panel.ignoresMouseEvents = false
                 self.presentExpandedPanel()
             } else {
+                // Подготавливаем размеры compact-режима до начала его визуального
+                // перехода, чтобы крыло не успевало налезть на menu bar.
+                self.updateMenuCollision()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.46) { [weak self] in
                     guard let self, !self.ui.expanded else { return }
                     self.panel.ignoresMouseEvents = true
                     (self.panel as? HookyPanel)?.finishExpandedPresentation()
+                    self.startGlobalPointerMonitoring()
                 }
             }
         }
@@ -96,13 +108,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor) }
+        stopGlobalPointerMonitoring()
         if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         workspaceObservers.forEach(workspaceCenter.removeObserver)
         workspaceObservers.removeAll()
         diagnosticsTimer?.invalidate()
         diagnosticsTimer = nil
+        menuCollisionTimer?.invalidate()
+        menuCollisionTimer = nil
         music.stopMonitoring()
         clipboard.stopMonitoring()
         volume.stopMonitoring()
@@ -157,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         result.acceptsMouseMovedEvents = true
         result.ignoresMouseEvents = false
         result.contentView = content
+        result.setAccessibilityIdentifier("hooky.main-panel")
         return result
     }
 
@@ -185,13 +200,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installPointerMonitoring() {
-        let handler: (NSEvent) -> Void = { [weak self] _ in
-            DispatchQueue.main.async { self?.handleGlobalPointerMove() }
-        }
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: handler)
+        startGlobalPointerMonitoring()
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
             self?.handleGlobalPointerMove()
             return event
+        }
+    }
+
+    private func startGlobalPointerMonitoring() {
+        guard globalMouseMonitor == nil else { return }
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            self?.scheduleGlobalPointerUpdate()
+        }
+    }
+
+    private func stopGlobalPointerMonitoring() {
+        guard let globalMouseMonitor else { return }
+        NSEvent.removeMonitor(globalMouseMonitor)
+        self.globalMouseMonitor = nil
+    }
+
+    /// Global mouse monitors can emit at the display refresh rate even while
+    /// the pointer is far from the notch. One pending hit-test is enough to
+    /// preserve responsive opening without flooding the main queue.
+    private func scheduleGlobalPointerUpdate() {
+        pointerMonitorLock.lock()
+        guard !globalPointerUpdatePending else {
+            pointerMonitorLock.unlock()
+            return
+        }
+        globalPointerUpdatePending = true
+        pointerMonitorLock.unlock()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 30.0) { [weak self] in
+            guard let self else { return }
+            self.pointerMonitorLock.lock()
+            self.globalPointerUpdatePending = false
+            self.pointerMonitorLock.unlock()
+            guard self.globalMouseMonitor != nil else { return }
+            self.handleGlobalPointerMove()
         }
     }
 
@@ -224,19 +271,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Прозрачная неактивная NSPanel может держать старый compositor snapshot.
-    /// Обновляем backing view после того, как SwiftUI вставил раскрытый контент,
-    /// не делая панель key window и не отбирая фокус у текущего приложения.
+    /// Schedule one normal display pass after content insertion. Forcing a
+    /// recursive layout/display here duplicates AppKit's opening work.
     private func refreshPanelRendering() {
         guard let contentView = panel.contentView else { return }
         contentView.needsLayout = true
         contentView.needsDisplay = true
-        DispatchQueue.main.async { [weak contentView, weak panel] in
-            contentView?.layoutSubtreeIfNeeded()
-            contentView?.layer?.setNeedsDisplay()
-            contentView?.displayIfNeeded()
-            panel?.displayIfNeeded()
-        }
     }
 
     private func presentExpandedPanel() {
@@ -245,7 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // SwiftUI сначала публикует expanded, затем вставляет glass-иерархию.
+        // SwiftUI сначала публикует expanded, затем вставляет содержимое.
         // На следующем run loop делаем уже видимую non-activating панель key:
         // это тот же переход, который раньше случайно происходил первым кликом.
         DispatchQueue.main.async { [weak self, weak hookyPanel] in
@@ -301,10 +341,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuCollision() {
+        guard hasCompactContent else {
+            updateCompactWingWidths(leading: MenuBarCollisionDetector.maximumWingWidth,
+                                    trailing: MenuBarCollisionDetector.maximumWingWidth)
+            return
+        }
         guard let screen = screenContainingNotch() else { return }
         let notchLeft = screen.frame.midX - ui.notchWidth / 2
-        let shouldHide = MenuBarCollisionDetector.shouldHideLeftWing(notchLeft: notchLeft)
-        if ui.hideLeftMusicWing != shouldHide { ui.hideLeftMusicWing = shouldHide }
+        let notchRight = screen.frame.midX + ui.notchWidth / 2
+        let widths = MenuBarCollisionDetector.compactWingWidths(
+            notchLeft: notchLeft,
+            notchRight: notchRight
+        )
+        updateCompactWingWidths(leading: widths.leading, trailing: widths.trailing)
+    }
+
+    private func updateCompactWingWidths(leading: CGFloat, trailing: CGFloat) {
+        let changed = ui.compactLeadingWingWidth != leading || ui.compactTrailingWingWidth != trailing
+        if ui.compactLeadingWingWidth != leading { ui.compactLeadingWingWidth = leading }
+        if ui.compactTrailingWingWidth != trailing { ui.compactTrailingWingWidth = trailing }
+        if changed {
+            HookyDiagnostics.control(
+                "action=compact_layout leading_width=\(Int(leading)) trailing_width=\(Int(trailing))"
+            )
+        }
     }
 
     private func refreshLocalizedContent() {

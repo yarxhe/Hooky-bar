@@ -155,9 +155,28 @@ extension MusicPlayerAdapter {
     }
 }
 
+final class SingleInvocation<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var callback: ((Value) -> Void)?
+
+    init(_ callback: @escaping (Value) -> Void) {
+        self.callback = callback
+    }
+
+    func resolve(_ value: Value) {
+        lock.lock()
+        let callback = callback
+        self.callback = nil
+        lock.unlock()
+        callback?(value)
+    }
+}
+
 final class MusicAdapterRegistry {
     private let mediaController = MediaController()
     private var adapters: [MusicSource: any MusicPlayerAdapter] = [:]
+    private var wantsSystemListener = false
+    private var listenerGeneration = 0
 
     init(additionalAdapters: [any MusicPlayerAdapter] = []) {
         [
@@ -190,15 +209,35 @@ final class MusicAdapterRegistry {
     }
 
     func startListening(onTrackInfo: @escaping (TrackInfo?) -> Void) {
+        wantsSystemListener = true
+        listenerGeneration &+= 1
+        let generation = listenerGeneration
         mediaController.onTrackInfoReceived = onTrackInfo
+        mediaController.onListenerTerminated = { [weak self] in
+            guard let self,
+                  self.wantsSystemListener,
+                  self.listenerGeneration == generation else { return }
+            HookyDiagnostics.bridge("event=mediaremote_listener_terminated restart_scheduled=true", isError: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self,
+                      self.wantsSystemListener,
+                      self.listenerGeneration == generation else { return }
+                self.mediaController.startListening()
+            }
+        }
         mediaController.startListening()
     }
 
     func stopListening() {
+        wantsSystemListener = false
+        listenerGeneration &+= 1
+        mediaController.onListenerTerminated = nil
+        mediaController.onTrackInfoReceived = nil
         mediaController.stopListening()
     }
 
     func requestSystemSnapshot(_ completion: @escaping (TrackInfo?) -> Void) {
-        mediaController.getTrackInfo(completion)
+        let completion = SingleInvocation(completion)
+        mediaController.getTrackInfo { completion.resolve($0) }
     }
 }

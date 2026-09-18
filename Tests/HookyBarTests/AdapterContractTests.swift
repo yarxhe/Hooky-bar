@@ -73,6 +73,37 @@ struct AdapterContractTests {
         #expect(store.artworkPresentationRevision == initialArtworkRevision + 1)
     }
 
+    @Test func invalidatingMusicAdapterRequestsReleasesEveryRequestGate() {
+        let store = MusicStore()
+        let previousGeneration = store.adapterRequestGeneration
+        store.isFetchingNowPlaying = true
+        store.isFetchingUpcoming = true
+        store.isFetchingMediaSnapshot = true
+        store.isFetchingLikeState = true
+        store.isFetchingSelectedPlaybackState = true
+        store.isRecoveringPlayback = true
+
+        store.invalidateAdapterRequests()
+
+        #expect(store.adapterRequestGeneration == previousGeneration + 1)
+        #expect(!store.isFetchingNowPlaying)
+        #expect(!store.isFetchingUpcoming)
+        #expect(!store.isFetchingMediaSnapshot)
+        #expect(!store.isFetchingLikeState)
+        #expect(!store.isFetchingSelectedPlaybackState)
+        #expect(!store.isRecoveringPlayback)
+    }
+
+    @Test func mediaSnapshotCompletionIsDeliveredOnlyOnce() {
+        var values: [Int] = []
+        let completion = SingleInvocation<Int> { values.append($0) }
+
+        completion.resolve(1)
+        completion.resolve(2)
+
+        #expect(values == [1])
+    }
+
     @Test func coldMusicLaunchKeepsOnePlayIntentUntilPlaybackIsConfirmed() async throws {
         let store = MusicStore()
         let adapter = ColdLaunchMusicAdapterDouble(
@@ -108,6 +139,17 @@ struct AdapterContractTests {
         #expect(store.systemCapabilities.contains(adapter.capability))
         store.stop()
         #expect(adapter.stopCount == 1)
+    }
+
+    @Test func pausingPomodoroStopsItsWakeupTimer() {
+        let store = SystemFeatureStore()
+        store.startPomodoro()
+        #expect(store.pomodoroTimer != nil)
+
+        store.pausePomodoro()
+
+        #expect(store.pomodoroTimer == nil)
+        #expect(!store.pomodoroRunning)
     }
 
     @Test func developerGitSnapshotParsesStablePorcelainState() {
@@ -158,7 +200,8 @@ struct AdapterContractTests {
         let ui = InterfaceModel()
         ui.notchWidth = 204
         ui.notchHeight = 32
-        ui.hideLeftMusicWing = false
+        ui.compactLeadingWingWidth = 56
+        ui.compactTrailingWingWidth = 56
         let eventID = UUID()
 
         let layout = ui.surfaceLayout(hasCompactContent: false, systemEventID: eventID)
@@ -168,6 +211,18 @@ struct AdapterContractTests {
         #expect(layout.height == 84)
         #expect(layout.bottomLeadingRadius == 18)
         #expect(layout.bottomTrailingRadius == 18)
+    }
+
+    @Test func compactPlayerShrinksOnlyTheCrowdedWing() {
+        let widths = MenuBarCollisionDetector.compactWingWidths(
+            notchLeft: 100,
+            notchRight: 200,
+            leadingOccupiedEdge: 55,
+            trailingOccupiedEdge: 230
+        )
+
+        #expect(widths.leading == 35)
+        #expect(widths.trailing == 0)
     }
 
     @Test func yandexCDPOnlyAcceptsItsLoopbackPageSocket() throws {

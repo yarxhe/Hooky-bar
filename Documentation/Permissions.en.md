@@ -7,7 +7,7 @@ Hooky bar uses system access only when the related feature is enabled or first u
 | Access | Purpose | When it is needed | Required |
 |---|---|---|---:|
 | Automation / Apple Events | Control Apple Music and Spotify, and create an Apple Notes note | On the first command sent to the corresponding application | no |
-| Accessibility | Fallback control for the native Yandex Music app when CDP is unavailable | When using a Yandex Music feature that needs the fallback | no |
+| Accessibility | Fallback control for the native Yandex Music app when CDP is unavailable; reads menu-bar item bounds so the mini-player does not cover them | When using a Yandex Music fallback; adaptive mini-player wings use it only after access is already granted | no |
 | Bluetooth | Device connection and disconnection events | After Bluetooth events are enabled | no |
 | Calendar | Upcoming meetings from Apple Calendar | After Calendar integration is enabled | no |
 | Desktop Folder | Read screenshots when the screenshot directory is on the Desktop | When clipboard screenshot monitoring starts | no |

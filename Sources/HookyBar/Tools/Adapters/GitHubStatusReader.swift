@@ -3,7 +3,11 @@ import Foundation
 /// Читает только текущий PR и CI-состояние выбранной ветки.
 enum GitHubStatusReader {
     static func read(at workspaceURL: URL) -> DeveloperCISnapshot {
-        guard let context = GitHubCLI.context(at: workspaceURL) else {
+        read(context: GitHubCLI.context(at: workspaceURL))
+    }
+
+    static func read(context: GitHubRepositoryContext?) -> DeveloperCISnapshot {
+        guard let context else {
             return DeveloperCISnapshot()
         }
         guard let gh = context.ghExecutable else {

@@ -199,7 +199,7 @@
 "event.pomodoro.finished" = "Focus complete";
 "event.pomodoro.break" = "Time for a short break";
 "settings.spectrum.title" = "Audio-reactive visualizer";
-"settings.spectrum.subtitle" = "Analyzes system audio while music is playing. No microphone, recording or upload.";
+"settings.spectrum.subtitle" = "Analyzes system audio while music is playing. No microphone, recording, or upload; a lightweight animation remains when disabled.";
 "settings.spectrum.idle" = "Waiting for music playback.";
 "settings.spectrum.active" = "System audio capture is running.";
 "settings.spectrum.unavailable" = "Audio capture is unavailable. Check macOS system audio recording permissions, then turn this option off and on to retry.";

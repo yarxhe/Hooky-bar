@@ -4,9 +4,8 @@ import AppKit
 final class HookyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 
-    /// Нативный Liquid Glass получает корректный active appearance только после
-    /// того, как панель становится key. Флаг `.nonactivatingPanel` при этом не
-    /// активирует Hooky bar целиком и не поднимает его как обычное приложение.
+    /// Keyboard focus for native fields without activating the whole app.
+    /// `.nonactivatingPanel` keeps the foreground application's activation state.
     func prepareForExpandedPresentation() {
         orderFrontRegardless()
         makeKey()

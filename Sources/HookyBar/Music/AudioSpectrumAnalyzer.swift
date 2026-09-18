@@ -72,9 +72,12 @@ final class AudioSpectrumAnalyzer {
                 peak = max(peak, hypot(real[bin], imaginary[bin]) * 4 / Float(count))
             }
             let db = 20 * log10(max(peak, 0.000001))
-            let target = CGFloat(min(1, max(0, (db + 65) / 60)))
+            // Чуть поднимаем тихие, но реальные частоты: визуализатор выглядит
+            // живее, не меняя размер FFT или частоту публикации данных.
+            let normalized = CGFloat(min(1, max(0, (db + 65) / 60)))
+            let target = min(1, pow(normalized, 0.72) * 1.06)
             let seconds = Double(count) / sampleRate
-            let smoothing = CGFloat(1 - exp(-seconds / (target > envelope[band] ? 0.035 : 0.22)))
+            let smoothing = CGFloat(1 - exp(-seconds / (target > envelope[band] ? 0.025 : 0.10)))
             envelope[band] += (target - envelope[band]) * smoothing
         }
         publish(envelope, envelope.max() ?? 0)

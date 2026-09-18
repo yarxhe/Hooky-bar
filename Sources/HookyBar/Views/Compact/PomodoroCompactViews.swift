@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PomodoroCompactTime: View {
-    let remaining: TimeInterval
+    @ObservedObject var features: SystemFeatureStore
 
     var body: some View {
         Text(formatted)
@@ -11,7 +11,20 @@ struct PomodoroCompactTime: View {
     }
 
     private var formatted: String {
-        let seconds = max(0, Int(remaining.rounded(.up)))
+        let seconds = max(0, Int(features.pomodoroRemaining.rounded(.up)))
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+struct PomodoroHeaderLabel: View {
+    @ObservedObject var features: SystemFeatureStore
+
+    var body: some View {
+        Text(features.hasPomodoro ? formatted : L10n.tr("tab.tools"))
+    }
+
+    private var formatted: String {
+        let seconds = max(0, Int(features.pomodoroRemaining.rounded(.up)))
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 }

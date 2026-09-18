@@ -39,7 +39,7 @@ body:
     id: environment
     attributes:
       label: Environment / Окружение
-      placeholder: Hooky Bar v1.4.1, macOS 26
+      placeholder: Hooky Bar v1.5.2, macOS 26
 
   - type: checkboxes
     id: checks

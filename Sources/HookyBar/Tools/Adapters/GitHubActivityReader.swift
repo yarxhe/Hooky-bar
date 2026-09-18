@@ -3,8 +3,11 @@ import Foundation
 /// Читает Issues, последний Release и обсуждение PR отдельно от CI-статуса.
 enum GitHubActivityReader {
     static func read(at workspaceURL: URL) -> DeveloperGitHubActivitySnapshot {
-        guard let context = GitHubCLI.context(at: workspaceURL),
-              let gh = context.ghExecutable else { return DeveloperGitHubActivitySnapshot() }
+        read(context: GitHubCLI.context(at: workspaceURL))
+    }
+
+    static func read(context: GitHubRepositoryContext?) -> DeveloperGitHubActivitySnapshot {
+        guard let context, let gh = context.ghExecutable else { return DeveloperGitHubActivitySnapshot() }
         return DeveloperGitHubActivitySnapshot(
             issues: openIssues(context: context, gh: gh),
             latestRelease: latestRelease(context: context, gh: gh),

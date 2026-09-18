@@ -2,6 +2,7 @@ import Cocoa
 import SwiftUI
 
 struct HookyBarView: View {
+    @StateObject private var paneCache = NativePaneCache()
     @ObservedObject var store: MusicStore
     @ObservedObject var clipboard: ClipboardStore
     @ObservedObject var notes: NotesStore
@@ -12,10 +13,14 @@ struct HookyBarView: View {
     @ObservedObject var localization: AppLocalization
 
     var body: some View {
-        ZStack(alignment: .top) {
+        NativeSurface(surface: surfaceLayout,
+                      backgroundOpacity: isIdle && !ui.collapseSurfaceVisible ? 0.001 : 1,
+                      contentRevision: surfaceContentRevision,
+                      onHover: { ui.pointerInside($0) }) {
             Group {
                 if ui.screenshotPreview != nil, ui.contentExpanded {
                     expandedContent
+                        .frame(width: 380, height: 250, alignment: .top)
                 } else if ui.showScreenshotSuccess {
                     screenshotSuccess
                 } else if ui.screenshotPreview != nil {
@@ -26,19 +31,11 @@ struct HookyBarView: View {
             }
             .frame(width: surfaceLayout.width, alignment: .top)
             .frame(height: surfaceLayout.height, alignment: .top)
-            .background(surfaceBackground)
-            .clipShape(UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: surfaceLayout.bottomLeadingRadius,
-                bottomTrailingRadius: surfaceLayout.bottomTrailingRadius,
-                topTrailingRadius: 0
-            ))
             .foregroundStyle(Color.white)
             .contentShape(Rectangle())
-            .onHover { ui.pointerInside($0) }
             .offset(x: surfaceLayout.horizontalOffset)
-            .animation(surfaceAnimation, value: ui.expanded)
-            .animation(HookyMotion.collapseToIdle, value: ui.collapseSurfaceVisible)
+            .animation(HookyMotion.compactWingResize, value: ui.compactLeadingWingWidth)
+            .animation(HookyMotion.compactWingResize, value: ui.compactTrailingWingWidth)
         }
         .frame(width: 440)
         .frame(height: 314, alignment: .top)
@@ -48,9 +45,12 @@ struct HookyBarView: View {
                 ui.selectTab(2)
             }
         }
-        .hookyGlassRevision(ui.glassRevision)
-        // Внешние приложения (например Terminal) не должны переводить нативное
-        // стекло открытой non-activating панели в неактивные обычные блоки.
+        .onAppear { store.setSpectrumPresentationActive(visualizerPresentationActive) }
+        .onChange(of: visualizerPresentationActive) { _, active in
+            store.setSpectrumPresentationActive(active)
+        }
+        .onDisappear { store.setSpectrumPresentationActive(false) }
+        // Keep controls active even when another application has keyboard focus.
         .environment(\.controlActiveState, .active)
         .environment(\.locale, localization.locale)
     }
@@ -62,17 +62,34 @@ struct HookyBarView: View {
         )
     }
 
-    private var surfaceAnimation: Animation {
-        switch surfaceLayout.mode {
-        case .compact, .systemEvent:
-            return HookyMotion.collapseToCompact
-        default:
-            return hasCompactContent ? HookyMotion.collapseToCompact : HookyMotion.collapseToIdle
-        }
-    }
-
-    private var surfaceBackground: Color {
-        return isIdle && !ui.collapseSurfaceVisible ? Color.black.opacity(0.001) : .black
+    /// The nested host observes its own stores. Reinstall its root only when
+    /// shell/header structure changes, not for every playback-clock publication.
+    private var surfaceContentRevision: AnyHashable {
+        var hasher = Hasher()
+        hasher.combine(ui.expanded)
+        hasher.combine(ui.contentExpanded)
+        hasher.combine(ui.tab)
+        hasher.combine(ui.screenshotPreview)
+        hasher.combine(ui.showScreenshotSuccess)
+        hasher.combine(ui.compactLeadingWingWidth)
+        hasher.combine(ui.compactTrailingWingWidth)
+        hasher.combine(store.compactPlaybackActive)
+        hasher.combine(store.nowPlaying.isPlaying)
+        hasher.combine(store.audioActive)
+        hasher.combine(store.systemSpectrumEnabled)
+        hasher.combine(store.selectedMusicSource)
+        hasher.combine(store.trackPresentationRevision)
+        hasher.combine(store.artworkPresentationRevision)
+        hasher.combine(store.upcomingTrack?.title)
+        hasher.combine(store.upcomingTrack?.artist)
+        hasher.combine(clipboard.screenshotCount)
+        hasher.combine(clipboard.textCount)
+        hasher.combine(features.currentEvent?.id)
+        hasher.combine(features.hasPomodoro)
+        hasher.combine(tools.developerModeEnabled)
+        hasher.combine(tools.workspace.branch)
+        hasher.combine(localization.locale.identifier)
+        return AnyHashable(hasher.finalize())
     }
 
     private var isIdle: Bool {
@@ -81,6 +98,12 @@ struct HookyBarView: View {
 
     private var hasCompactContent: Bool {
         store.compactPlaybackActive || features.hasPomodoro
+    }
+
+    private var visualizerPresentationActive: Bool {
+        guard ui.screenshotPreview == nil else { return false }
+        if ui.expanded { return ui.tab == 0 && store.nowPlaying.isPlaying }
+        return store.compactPlaybackActive && ui.compactTrailingWingWidth > 8
     }
 
     private var compactSurfaceWidth: CGFloat {
@@ -94,6 +117,9 @@ struct HookyBarView: View {
         ZStack(alignment: .top) {
             if ui.expanded {
                 expandedContent
+                    // Animate the outer shell while the live page keeps its
+                    // final layout. Avoid reflowing every control as it opens.
+                    .frame(width: 440, height: 314, alignment: .top)
                     .transition(.opacity)
             } else {
                 collapsedContent
@@ -126,34 +152,36 @@ struct HookyBarView: View {
     /// Событие рисуется только в banner снизу и больше не дублируется в крыльях.
     private func compactBarContent(suppressIdleChrome: Bool = false) -> some View {
         HStack(spacing: 0) {
-            if !ui.hideLeftMusicWing {
-                Group {
-                    if features.hasPomodoro {
-                        PomodoroCompactTime(remaining: features.pomodoroRemaining)
-                    } else if store.compactPlaybackActive || !suppressIdleChrome {
-                        Group {
-                            if let artwork = store.nowPlaying.artwork {
-                                Image(nsImage: artwork).resizable().scaledToFill()
-                            } else {
-                                MusicSourceIcon(source: store.selectedMusicSource)
-                            }
+            Group {
+                if features.hasPomodoro {
+                    PomodoroCompactTime(features: features)
+                } else if store.compactPlaybackActive || !suppressIdleChrome {
+                    Group {
+                        if let artwork = store.nowPlaying.artwork {
+                            Image(nsImage: artwork).resizable().scaledToFill()
+                        } else {
+                            MusicSourceIcon(source: store.selectedMusicSource)
                         }
-                        .frame(width: 24, height: 24)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    } else {
-                        Color.clear
                     }
+                    .frame(width: 24, height: 24)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Color.clear
                 }
-                .frame(width: 56, height: ui.notchHeight)
             }
+            .frame(width: ui.compactLeadingWingWidth, height: ui.notchHeight)
+            .opacity(ui.compactLeadingWingWidth > 0 ? 1 : 0)
+            .clipped()
 
             Color.clear.frame(width: ui.notchWidth, height: ui.notchHeight)
 
             Group {
                 if store.compactPlaybackActive {
                     CompactSpectrumView(signal: store.spectrumSignal, colors: store.visualizerColors,
-                                        active: !ui.expanded && store.compactPlaybackActive)
-                        .frame(width: 48, height: 19)
+                                        active: !ui.expanded && store.compactPlaybackActive
+                                            && ui.compactTrailingWingWidth > 8,
+                                        simulated: store.usesSimulatedSpectrum)
+                        .frame(width: max(0, ui.compactTrailingWingWidth - 8), height: 19)
                 } else if features.hasPomodoro {
                     PomodoroCompactProgress(progress: features.pomodoroProgress, running: features.pomodoroRunning)
                 } else if suppressIdleChrome {
@@ -162,7 +190,9 @@ struct HookyBarView: View {
                     PomodoroCompactProgress(progress: features.pomodoroProgress, running: features.pomodoroRunning)
                 }
             }
-            .frame(width: 56, height: ui.notchHeight)
+            .frame(width: ui.compactTrailingWingWidth, height: ui.notchHeight)
+            .opacity(ui.compactTrailingWingWidth > 0 ? 1 : 0)
+            .clipped()
         }
         .frame(width: compactSurfaceWidth, height: ui.notchHeight)
     }
@@ -181,7 +211,7 @@ struct HookyBarView: View {
             if ui.screenshotPreview == nil, ui.tab == 0 {
                 LiquidEtherBackground(
                     colors: store.visualizerColors,
-                    active: ui.expanded
+                    active: ui.expanded && (store.nowPlaying.isPlaying || store.audioActive)
                 )
             }
 
@@ -192,8 +222,10 @@ struct HookyBarView: View {
                     Spacer()
                     if ui.screenshotPreview == nil {
                         SpectrumView(signal: store.spectrumSignal, colors: store.visualizerColors,
-                                     active: ui.expanded && (store.nowPlaying.isPlaying || store.audioActive),
-                                     expanded: true)
+                                     active: ui.expanded && ui.tab == 0
+                                        && (store.nowPlaying.isPlaying || store.audioActive),
+                                     expanded: true,
+                                     simulated: store.usesSimulatedSpectrum)
                             .frame(width: 104, height: 18).frame(width: 112)
                     } else {
                         Color.clear.frame(width: 112)
@@ -209,14 +241,12 @@ struct HookyBarView: View {
                         ui.screenshotCopied()
                     }
                 } else {
-                    HookyGlassContainer(spacing: 5) {
-                        HStack(spacing: 5) {
-                            tabButton(L10n.tr("tab.music"), 0, "music.note")
-                            tabButton(L10n.tr("tab.clipboard"), 1, "rectangle.on.rectangle.angled")
-                            tabButton(L10n.tr("tab.tools"), 2, "square.grid.2x2")
-                            if tools.developerModeEnabled {
-                                tabButton(L10n.tr("tab.developer"), 3, "hammer")
-                            }
+                    HStack(spacing: 5) {
+                        tabButton(L10n.tr("tab.music"), 0, "music.note")
+                        tabButton(L10n.tr("tab.clipboard"), 1, "rectangle.on.rectangle.angled")
+                        tabButton(L10n.tr("tab.tools"), 2, "square.grid.2x2")
+                        if tools.developerModeEnabled {
+                            tabButton(L10n.tr("tab.developer"), 3, "hammer")
                         }
                     }
                     .frame(height: 30)
@@ -224,19 +254,10 @@ struct HookyBarView: View {
                     .padding(.bottom, 9)
                     .zIndex(1)
 
-                    // Сохраняем прежний переход содержимого внутри общего стекла.
-                    HookyGlassContainer(spacing: 8) {
-                        ZStack {
-                            selectedPane
-                                .id(ui.tab)
-                                .transition(tabTransition)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
+                    NativePaneTransition(selection: ui.tab, direction: ui.tabDirection, cache: paneCache) {
+                        selectedPane
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // Контент остаётся в отдельном Glass render pass, но без mask:
-                    // mask растрировал всю прокрутку и размывал текст во время движения.
                     .clipped()
                 }
             }
@@ -255,21 +276,10 @@ struct HookyBarView: View {
     private var selectedPane: some View {
         if ui.tab == 0 { MusicPane(store: store, volume: volume) }
         else if ui.tab == 1 { ClipboardPane(clipboard: clipboard) }
-        else if ui.tab == 2 { ToolsPane(notes: notes, features: features, tools: tools) }
+        else if ui.tab == 2 {
+            ToolsPane(notes: notes, features: features, tools: tools)
+        }
         else { DeveloperPane(tools: tools) }
-    }
-
-    private var tabTransition: AnyTransition {
-        .asymmetric(
-            insertion: .modifier(
-                active: HookyTabTransitionModifier(horizontalOffset: ui.tabDirection * 18, opacity: 0),
-                identity: HookyTabTransitionModifier(horizontalOffset: 0, opacity: 1)
-            ),
-            removal: .modifier(
-                active: HookyTabTransitionModifier(horizontalOffset: ui.tabDirection * -12, opacity: 0),
-                identity: HookyTabTransitionModifier(horizontalOffset: 0, opacity: 1)
-            )
-        )
     }
 
     @ViewBuilder
@@ -301,7 +311,7 @@ struct HookyBarView: View {
         } else if ui.tab == 2 {
             HStack(spacing: 5) {
                 Image(systemName: features.hasPomodoro ? "timer" : "scope")
-                Text(features.hasPomodoro ? compactPomodoroTime : L10n.tr("tab.tools"))
+                PomodoroHeaderLabel(features: features)
             }
             .font(.system(size: 9, weight: .semibold, design: .rounded))
             .foregroundStyle(.white.opacity(0.68))
@@ -314,11 +324,6 @@ struct HookyBarView: View {
             .font(.system(size: 9, weight: .semibold, design: .rounded))
             .foregroundStyle(.white.opacity(0.68))
         }
-    }
-
-    private var compactPomodoroTime: String {
-        let seconds = max(0, Int(features.pomodoroRemaining.rounded(.up)))
-        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 
     private func headerCounter(icon: String, count: Int) -> some View {
@@ -335,7 +340,9 @@ struct HookyBarView: View {
         let selected = ui.tab == value
         return Button {
             guard value != ui.tab else { return }
+            HookyDiagnostics.control("action=tab_select phase=request target=\(value)")
             ui.selectTab(value)
+            HookyDiagnostics.control("action=tab_select phase=applied target=\(value)")
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: icon)
@@ -348,14 +355,15 @@ struct HookyBarView: View {
             .foregroundStyle(selected ? Color.white : Color.white.opacity(0.48))
             .frame(maxWidth: .infinity)
             .frame(height: 30)
-            .hookyGlass(
+            .hookyMaterial(
                 enabled: selected,
-                cornerRadius: 9,
-                interactive: true
+                cornerRadius: 9
             )
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("hooky.tab.\(value)")
+        .accessibilityValue(selected ? "selected" : "unselected")
         .frame(maxWidth: .infinity)
     }
 }

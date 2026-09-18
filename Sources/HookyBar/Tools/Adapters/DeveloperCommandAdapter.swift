@@ -165,9 +165,12 @@ final class DeveloperCommandAdapter {
     }
 
     private static func outputTail(at url: URL) -> String {
-        guard let data = try? Data(contentsOf: url) else { return "" }
-        let tail = data.suffix(12_000)
-        return String(decoding: tail, as: UTF8.self)
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return "" }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd(),
+              (try? handle.seek(toOffset: size > 12_000 ? size - 12_000 : 0)) != nil,
+              let data = try? handle.readToEnd() else { return "" }
+        return String(decoding: data, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

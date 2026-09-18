@@ -12,9 +12,12 @@ final class CalendarEventAdapter: SystemEventAdapter {
     private var receive: ((HookySystemEvent) -> Void)?
     private var timer: Timer?
     private var lastEventID: String?
+    private var lifecycleGeneration = 0
 
     func start(receive: @escaping (HookySystemEvent) -> Void) {
         self.receive = receive
+        lifecycleGeneration &+= 1
+        let generation = lifecycleGeneration
         let authorization = EKEventStore.authorizationStatus(for: .event)
         if authorization == .fullAccess {
             startMonitoring()
@@ -23,13 +26,17 @@ final class CalendarEventAdapter: SystemEventAdapter {
         guard authorization == .notDetermined else { return }
         eventStore.requestFullAccessToEvents { [weak self] granted, _ in
             DispatchQueue.main.async {
-                guard granted else { return }
-                self?.startMonitoring()
+                guard let self,
+                      granted,
+                      self.lifecycleGeneration == generation,
+                      self.receive != nil else { return }
+                self.startMonitoring()
             }
         }
     }
 
     func stop() {
+        lifecycleGeneration &+= 1
         timer?.invalidate()
         timer = nil
         receive = nil

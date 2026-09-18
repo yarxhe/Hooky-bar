@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Version 1.4.1</strong>
+  <strong>Version 1.5.2</strong>
 </p>
 
 <p align="center">
@@ -51,7 +51,7 @@ macOS spreads many useful actions across separate windows, menus, and apps. Hook
 - seeking and system volume control;
 - like and dislike where supported by the selected player;
 - upcoming track, artwork-driven background, and compact visualizer;
-- a mini-player around the notch during playback.
+- a mini-player around the notch during playback that smoothly shrinks its wings beside occupied menu-bar items.
 
 ### Smart clipboard
 
@@ -93,7 +93,7 @@ Detailed music-command and memory logging is disabled by default. After the firs
 }
 ```
 
-Set the value to `true` to enable logging. The change is picked up automatically without restarting the app. Logs include button handling, the selected Yandex Music control channel, command result and latency, CDP errors, and physical memory footprint; track names and other media metadata are not recorded.
+Set the value to `true` to enable logging. The change is picked up automatically without restarting the app. Logs include handling of the main interface buttons, the selected Yandex Music control channel, music-command result and latency, CDP errors, and physical memory footprint; track names and other media metadata are not recorded. Periodic `memory` readings also include `cpu_percent` and `cpu_interval_s`: average process CPU over the interval (normally 15 seconds), with 100% representing one core. The first reading establishes a baseline and has no CPU value; short peaks may exceed the average. These measurements are skipped when debug logging is disabled.
 
 ```sh
 log stream --style compact --level info \
@@ -134,7 +134,7 @@ Hooky bar uses one continuous surface for the mini-player, full panel, and compa
 
 ## Installation
 
-Download the `.dmg` from Releases, move Hooky bar to `Applications`, and launch it. Regular users do not need Swift and do not need to build the project themselves.
+Download the 1.5.2 `.dmg` from [Releases](https://github.com/yarxhe/Hooky-bar/releases), move Hooky bar to `Applications`, and launch it. Regular users do not need Swift or a local source build.
 
 The current build is not signed with an Apple Developer ID. On first launch, use **Open** from the context menu and allow the app in macOS security settings.
 
@@ -146,6 +146,10 @@ Every system permission belongs to a specific feature and does not imply screen 
 
 ## Project status
 
-Hooky bar is under active development. The current stable release is **1.4.1**. Built-in features and internal adapters are stabilized; a public SDK for third-party integrations is planned after user feedback.
+Hooky bar is under active development. The current public beta is **1.5.2**. The internal architecture beta gate is complete; the remaining requirements for a stable release are tracked in [Beta readiness](Documentation/Beta-Readiness.en.md). A public SDK for third-party integrations is planned after user feedback.
 
 To build the project or contribute an integration, see [CONTRIBUTING.en.md](CONTRIBUTING.en.md).
+
+A [repeatable UI/performance check](Documentation/PanelPerformanceTests.md) (Russian guide) exercises panel expansion, navigation/filter buttons and scrolling while measuring CPU and memory in the installed app, without disabling animations.
+
+September 13 local checks (Russian): [dark blur replacing glass, with before/after measurements](Documentation/Dark-Blur-2026-09-13.md), and [Yandex Music system integration and CDP limitations](Documentation/Yandex-System-Integration-2026-09-13.md). These describe the local working build, not a new public release.

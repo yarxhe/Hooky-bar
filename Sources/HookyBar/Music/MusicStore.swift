@@ -9,6 +9,7 @@ enum MusicStoreDefaultsKey: String {
 
 enum MusicStoreTiming {
     static let pollingInterval: TimeInterval = 1.0
+    static let listenerFallbackPollingInterval: TimeInterval = 4.0
     static let playbackClockInterval: TimeInterval = 0.5
     static let upcomingRefreshInterval: TimeInterval = 8.0
     static let likeStateRefreshInterval: TimeInterval = 2.5
@@ -30,6 +31,7 @@ final class MusicStore: ObservableObject {
     @Published var isSelectedMusicAppRunning = false
     @Published var selectedMusicSource: MusicSource {
         didSet {
+            invalidateAdapterRequests()
             navigationCommandGeneration &+= 1
             UserDefaults.standard.set(selectedMusicSource.rawValue, forKey: MusicStoreDefaultsKey.selectedMusicSource.rawValue)
             adapterHasProvidedTrack = false
@@ -39,9 +41,6 @@ final class MusicStore: ObservableObject {
             upcomingTrack = nil
             nowPlaying = NowPlayingSnapshot(artist: selectedMusicSource.fullTitle)
             visualizerColors = ArtworkPalette.fallback
-            isFetchingLikeState = false
-            isFetchingUpcoming = false
-            isFetchingSelectedPlaybackState = false
             expectedPlaybackState = nil
             playbackOverrideUntil = .distantPast
             playbackCommandGeneration += 1
@@ -67,18 +66,33 @@ final class MusicStore: ObservableObject {
     @Published var artworkPresentationRevision = 0
     let spectrumSignal = AudioSpectrumSignal.shared
     var timer: Timer?
+    var pollingTimerInterval: TimeInterval?
     var playbackClock: Timer?
     var workspaceObservers: [NSObjectProtocol] = []
     var isMonitoring = false
     private let systemAudioSpectrum = SystemAudioSpectrumAdapter()
     @Published var systemSpectrumEnabled = UserDefaults.standard.object(forKey: "systemSpectrumEnabled") as? Bool ?? true
     @Published var systemSpectrumStatus = "settings.spectrum.idle"
+    private var spectrumPresentationActive = false
+    var usesSimulatedSpectrum: Bool { !systemSpectrumEnabled && nowPlaying.isPlaying }
 
     func setSystemSpectrumEnabled(_ enabled: Bool) {
         systemSpectrumEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: "systemSpectrumEnabled")
         if enabled { systemAudioSpectrum.retry() }
-        systemAudioSpectrum.setActive(enabled && isMonitoring && nowPlaying.isPlaying)
+        updateSpectrumCapture()
+    }
+
+    func setSpectrumPresentationActive(_ active: Bool) {
+        guard spectrumPresentationActive != active else { return }
+        spectrumPresentationActive = active
+        updateSpectrumCapture()
+    }
+
+    private func updateSpectrumCapture() {
+        systemAudioSpectrum.setActive(
+            systemSpectrumEnabled && isMonitoring && nowPlaying.isPlaying && spectrumPresentationActive
+        )
     }
     var lastPlaybackTick = Date()
     var isFetchingNowPlaying = false
@@ -105,6 +119,8 @@ final class MusicStore: ObservableObject {
     var isRecoveringPlayback = false
     var lastPlaybackRecovery = Date.distantPast
     var currentTrackIdentity: String?
+    var adapterRequestGeneration = 0
+    var monitoringSessionGeneration = 0
     let adapterRegistry: MusicAdapterRegistry
 
     var activeAdapter: any MusicPlayerAdapter {
@@ -125,10 +141,17 @@ final class MusicStore: ObservableObject {
     func startMonitoring() {
         guard !isMonitoring else { return }
         isMonitoring = true
+        monitoringSessionGeneration &+= 1
         systemAudioSpectrum.onStatus = { [weak self] in self?.systemSpectrumStatus = $0 }
         installWorkspaceObservers()
+        let generation = monitoringSessionGeneration
         adapterRegistry.startListening { [weak self] info in
-            DispatchQueue.main.async { self?.applyTrackInfo(info) }
+            DispatchQueue.main.async {
+                guard let self,
+                      self.isMonitoring,
+                      self.monitoringSessionGeneration == generation else { return }
+                self.applyTrackInfo(info)
+            }
         }
         refreshMusicState()
         refreshNowPlaying()
@@ -163,10 +186,16 @@ final class MusicStore: ObservableObject {
         guard isMonitoring, isSelectedMusicAppRunning else {
             timer?.invalidate()
             timer = nil
+            pollingTimerInterval = nil
             return
         }
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: MusicStoreTiming.pollingInterval, repeats: true) { [weak self] _ in
+        let interval = selectedSourceOwnsSystemMedia && adapterHasProvidedTrack
+            ? MusicStoreTiming.listenerFallbackPollingInterval
+            : MusicStoreTiming.pollingInterval
+        guard timer == nil || pollingTimerInterval != interval else { return }
+        timer?.invalidate()
+        pollingTimerInterval = interval
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             // A one-shot MediaRemote request can return NIL while an already
             // running Electron player is handing media ownership back to
             // macOS. Keep retrying only until the selected player is bound;
@@ -199,9 +228,12 @@ final class MusicStore: ObservableObject {
 
     func stopMonitoring() {
         isMonitoring = false
+        monitoringSessionGeneration &+= 1
+        invalidateAdapterRequests()
         systemAudioSpectrum.setActive(false)
         timer?.invalidate()
         timer = nil
+        pollingTimerInterval = nil
         playbackClock?.invalidate()
         playbackClock = nil
         let center = NSWorkspace.shared.notificationCenter
@@ -209,6 +241,19 @@ final class MusicStore: ObservableObject {
         workspaceObservers.removeAll()
         adapterRegistry.stopListening()
         cancelPendingPlaybackStart()
+    }
+
+    /// Invalidates every adapter callback that belongs to an earlier source or
+    /// monitoring session. Resetting all gates here also prevents a cancelled
+    /// request from leaving polling permanently blocked after monitoring restarts.
+    func invalidateAdapterRequests() {
+        adapterRequestGeneration &+= 1
+        isFetchingNowPlaying = false
+        isFetchingUpcoming = false
+        isFetchingMediaSnapshot = false
+        isFetchingLikeState = false
+        isFetchingSelectedPlaybackState = false
+        isRecoveringPlayback = false
     }
 
     func tickPlaybackClock() {
@@ -243,8 +288,11 @@ final class MusicStore: ObservableObject {
             // The selected player can launch after Hooky Bar. Fetch a snapshot
             // to wake the island and let subsequent listener updates take over.
             refreshMediaSnapshot()
+            let generation = adapterRequestGeneration
             DispatchQueue.main.asyncAfter(deadline: .now() + MusicStoreTiming.recoverySnapshotDelay) { [weak self] in
-                guard let self, self.isSelectedMusicAppRunning else { return }
+                guard let self,
+                      self.adapterRequestGeneration == generation,
+                      self.isSelectedMusicAppRunning else { return }
                 self.refreshMediaSnapshot()
             }
         }
@@ -257,11 +305,12 @@ final class MusicStore: ObservableObject {
     }
 
     func refreshMediaSnapshot() {
-        guard isSelectedMusicAppRunning, !isFetchingMediaSnapshot else { return }
+        guard isMonitoring, isSelectedMusicAppRunning, !isFetchingMediaSnapshot else { return }
         isFetchingMediaSnapshot = true
+        let generation = adapterRequestGeneration
         adapterRegistry.requestSystemSnapshot { [weak self] info in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.adapterRequestGeneration == generation else { return }
                 self.isFetchingMediaSnapshot = false
                 self.applyTrackInfo(info)
             }
@@ -269,10 +318,11 @@ final class MusicStore: ObservableObject {
     }
 
     func recoverSelectedPlaybackPresentation() {
-        guard !isRecoveringPlayback,
+        guard isMonitoring, !isRecoveringPlayback,
               Date().timeIntervalSince(lastPlaybackRecovery) >= 1 else { return }
         isRecoveringPlayback = true
         lastPlaybackRecovery = Date()
+        let generation = adapterRequestGeneration
         let source = selectedMusicSource
         let adapter = activeAdapter
         let context = commandContext
@@ -281,8 +331,10 @@ final class MusicStore: ObservableObject {
             let directSnapshot = adapter.directSnapshot(context: context)
             let playing = directSnapshot?.isPlaying ?? adapter.playbackState()
             DispatchQueue.main.async {
+                guard self.adapterRequestGeneration == generation,
+                      self.selectedMusicSource == source else { return }
                 self.isRecoveringPlayback = false
-                guard self.selectedMusicSource == source,
+                guard
                       self.isSelectedMusicAppRunning,
                       !self.selectedSourceOwnsSystemMedia,
                       let playing else { return }
@@ -299,19 +351,21 @@ final class MusicStore: ObservableObject {
     }
 
     func refreshLikeState(force: Bool = false) {
-        guard isSelectedMusicAppRunning, !isFetchingLikeState,
+        guard isMonitoring, isSelectedMusicAppRunning, !isFetchingLikeState,
               force || Date().timeIntervalSince(lastLikeStateRefresh) >= MusicStoreTiming.likeStateRefreshInterval else { return }
         isFetchingLikeState = true
         lastLikeStateRefresh = Date()
+        let generation = adapterRequestGeneration
         let source = selectedMusicSource
         let adapter = activeAdapter
         let context = commandContext
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let state = adapter.ratingState(context: context)
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self,
+                      self.adapterRequestGeneration == generation,
+                      source == self.selectedMusicSource else { return }
                 self.isFetchingLikeState = false
-                guard source == self.selectedMusicSource else { return }
                 guard let state, self.likedOverrideUntil.map({ $0 <= Date() }) ?? true else { return }
                 if self.nowPlaying.isLiked != state.liked { self.nowPlaying.isLiked = state.liked }
                 if self.nowPlaying.isDisliked != state.disliked { self.nowPlaying.isDisliked = state.disliked }
@@ -320,39 +374,44 @@ final class MusicStore: ObservableObject {
     }
 
     func refreshUpcomingTrack() {
+        guard isMonitoring else { return }
         guard isSelectedMusicAppRunning else { upcomingTrack = nil; return }
         guard activeAdapter.capabilities.canReadUpcomingTrack else { upcomingTrack = nil; return }
         guard !isFetchingUpcoming, Date().timeIntervalSince(lastUpcomingRefresh) >= MusicStoreTiming.upcomingRefreshInterval else { return }
         isFetchingUpcoming = true
         lastUpcomingRefresh = Date()
+        let generation = adapterRequestGeneration
         let source = selectedMusicSource
         let adapter = activeAdapter
         let context = commandContext
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let upcoming = adapter.upcomingTrack(context: context)
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self,
+                      self.adapterRequestGeneration == generation,
+                      self.selectedMusicSource == source else { return }
                 self.isFetchingUpcoming = false
-                guard self.selectedMusicSource == source else { return }
                 if self.upcomingTrack != upcoming { self.upcomingTrack = upcoming }
             }
         }
     }
 
     func refreshNowPlaying() {
-        guard isSelectedMusicAppRunning, selectedSourceOwnsSystemMedia,
+        guard isMonitoring, isSelectedMusicAppRunning, selectedSourceOwnsSystemMedia,
               !adapterHasProvidedTrack, !isFetchingNowPlaying else { return }
         isFetchingNowPlaying = true
+        let generation = adapterRequestGeneration
         let source = selectedMusicSource
         let adapter = activeAdapter
         let context = commandContext
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let snapshot = adapter.directSnapshot(context: context)
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self,
+                      self.adapterRequestGeneration == generation,
+                      self.selectedMusicSource == source else { return }
                 self.isFetchingNowPlaying = false
-                guard self.selectedMusicSource == source,
-                      !self.adapterHasProvidedTrack,
+                guard !self.adapterHasProvidedTrack,
                       let snapshot else { return }
                 self.applyAdapterSnapshot(snapshot, marksSystemOwnership: true)
             }
@@ -360,18 +419,20 @@ final class MusicStore: ObservableObject {
     }
 
     func refreshSelectedPlaybackState() {
-        guard isSelectedMusicAppRunning,
+        guard isMonitoring, isSelectedMusicAppRunning,
               selectedSourceOwnsSystemMedia, !isFetchingSelectedPlaybackState else { return }
         isFetchingSelectedPlaybackState = true
+        let generation = adapterRequestGeneration
         let source = selectedMusicSource
         let adapter = activeAdapter
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let playing = adapter.playbackState()
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self,
+                      self.adapterRequestGeneration == generation,
+                      self.selectedMusicSource == source else { return }
                 self.isFetchingSelectedPlaybackState = false
-                guard self.selectedMusicSource == source,
-                      self.isSelectedMusicAppRunning,
+                guard self.isSelectedMusicAppRunning,
                       self.selectedSourceOwnsSystemMedia,
                       let playing else { return }
                 self.applyPlaybackState(playing)
@@ -389,6 +450,7 @@ final class MusicStore: ObservableObject {
         }
         activeMediaBundleIdentifier = selectedMusicSource.bundleIdentifier
         adapterHasProvidedTrack = true
+        updatePollingTimer()
         applyAdapterSnapshot(snapshot, marksSystemOwnership: true)
     }
 
@@ -460,7 +522,7 @@ final class MusicStore: ObservableObject {
     }
 
     func updatePresentationState(isPlaying: Bool) {
-        if isMonitoring { systemAudioSpectrum.setActive(systemSpectrumEnabled && isPlaying) }
+        updateSpectrumCapture()
         if musicPresentationActive != isPlaying { musicPresentationActive = isPlaying }
         if compactPlaybackActive != isPlaying { compactPlaybackActive = isPlaying }
         updatePlaybackClockTimer()
@@ -513,11 +575,17 @@ final class MusicStore: ObservableObject {
     ) {
         let source = selectedMusicSource
         let identity = currentTrackIdentity
+        let generation = adapterRequestGeneration
         DispatchQueue.global(qos: qos).async { [weak self] in
-            guard let self else { return }
+            guard let self,
+                  self.adapterRequestGeneration == generation,
+                  self.selectedMusicSource == source,
+                  (!requiresSameTrack || self.currentTrackIdentity == identity)
+            else { return }
             let result = command(adapter, context)
             DispatchQueue.main.async { [weak self] in
                 guard let self,
+                      self.adapterRequestGeneration == generation,
                       self.selectedMusicSource == source,
                       (!requiresSameTrack || self.currentTrackIdentity == identity)
                 else { return }

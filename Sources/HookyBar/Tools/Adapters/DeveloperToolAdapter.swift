@@ -110,17 +110,10 @@ final class DeveloperToolAdapter: ToolActionAdapter {
     }
 
     private static func runGit(_ arguments: [String], at folder: URL) -> String? {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", folder.path] + arguments
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        GitHubCLI.run(
+            executable: "/usr/bin/git",
+            arguments: ["-C", folder.path] + arguments
+        )
     }
 
     static func snapshot(for folder: URL, status: String?, commit: String?) -> DeveloperWorkspaceSnapshot {

@@ -5,7 +5,10 @@ let package = Package(
     name: "HookyBar",
     defaultLocalization: "en",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "HookyBar", targets: ["HookyBar"])],
+    products: [
+        .executable(name: "HookyBar", targets: ["HookyBar"]),
+        .executable(name: "HookyPanelPerformanceCheck", targets: ["HookyPanelPerformanceCheck"])
+    ],
     dependencies: [
         .package(url: "https://github.com/ejbills/mediaremote-adapter.git", revision: "5b6afde3f501a3da567e23bf7f23d562938a1809")
     ],
@@ -16,6 +19,16 @@ let package = Package(
                 .product(name: "MediaRemoteAdapter", package: "mediaremote-adapter")
             ],
             resources: [.process("Resources")]
+        ),
+        .target(name: "HookyPerformanceSupport", path: "Packaging/Verification/PerformanceSupport"),
+        .executableTarget(
+            name: "HookyPanelPerformanceCheck",
+            dependencies: ["HookyPerformanceSupport"],
+            path: "Packaging/Verification/PanelPerformanceCheck"
+        ),
+        .testTarget(
+            name: "HookyPerformanceTests",
+            dependencies: ["HookyPerformanceSupport"]
         ),
         .testTarget(
             name: "HookyBarTests",
