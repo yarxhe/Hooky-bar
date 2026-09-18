@@ -7,18 +7,16 @@ struct DeveloperPane: View {
     var body: some View {
         GeometryReader { viewport in
             ScrollView(.vertical) {
-                HookyGlassContainer(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        projectCard
-                        actionRow
-                        commandCard
-                        githubActivityCard
-                        // Нижние действия можно поднять над краем острова.
-                        Color.clear.frame(height: 24)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
+                VStack(alignment: .leading, spacing: 12) {
+                    projectCard
+                    actionRow
+                    commandCard
+                    githubActivityCard
+                    // Нижние действия можно поднять над краем острова.
+                    Color.clear.frame(height: 24)
                 }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
                 .frame(width: viewport.size.width)
                 .background(VerticalScrollLock().frame(width: 0, height: 0))
             }
@@ -28,7 +26,7 @@ struct DeveloperPane: View {
             .scrollBounceBehavior(.basedOnSize)
             .clipped()
         }
-        .onAppear(perform: tools.refreshDeveloperWorkspace)
+        .onAppear(perform: tools.refreshDeveloperWorkspaceIfNeeded)
     }
 
     private var projectCard: some View {
@@ -59,7 +57,7 @@ struct DeveloperPane: View {
             }
         }
         .padding(12)
-        .hookyGlass(cornerRadius: 16)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var workspaceHeader: some View {
@@ -189,7 +187,7 @@ struct DeveloperPane: View {
             }
         }
         .padding(12)
-        .hookyGlass(cornerRadius: 16)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .opacity(tools.workspace.isConfigured ? 1 : 0.38)
     }
 
@@ -271,7 +269,7 @@ struct DeveloperPane: View {
             )
         }
         .padding(12)
-        .hookyGlass(cornerRadius: 16)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .opacity(tools.workspace.isConfigured ? 1 : 0.38)
     }
 

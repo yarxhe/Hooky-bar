@@ -65,6 +65,31 @@ final class GitHubToolAdapter: ToolActionAdapter {
         }
     }
 
+    /// CI and activity share one repository lookup instead of launching the
+    /// same git probes twice for a single Dev refresh.
+    func inspectAll(
+        at workspaceURL: URL,
+        completion: @escaping (DeveloperCISnapshot, DeveloperGitHubActivitySnapshot) -> Void
+    ) {
+        statusGeneration &+= 1
+        activityGeneration &+= 1
+        let requestedStatusGeneration = statusGeneration
+        let requestedActivityGeneration = activityGeneration
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let context = GitHubCLI.context(at: workspaceURL)
+            let nextStatus = GitHubStatusReader.read(context: context)
+            let nextActivity = GitHubActivityReader.read(context: context)
+            DispatchQueue.main.async {
+                guard let self,
+                      self.statusGeneration == requestedStatusGeneration,
+                      self.activityGeneration == requestedActivityGeneration else { return }
+                self.status = nextStatus
+                self.activity = nextActivity
+                completion(nextStatus, nextActivity)
+            }
+        }
+    }
+
     func open(_ item: DeveloperGitHubActivityItem) -> IntegrationResult {
         open(item.url)
     }

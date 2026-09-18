@@ -11,6 +11,7 @@ enum HookyDiagnostics {
     private static let bridgeLogger = Logger(subsystem: "com.yarxhe.HookyBar", category: "yandex-bridge")
     private static let memoryLogger = Logger(subsystem: "com.yarxhe.HookyBar", category: "memory")
     private static let configuration = DebugLoggingConfiguration()
+    private static let processUsage = ProcessUsageSampler()
 
     static var configurationURL: URL { configuration.url }
     static var isEnabled: Bool { configuration.isEnabled }
@@ -35,8 +36,9 @@ enum HookyDiagnostics {
     }
 
     static func memory(_ event: String) {
-        guard isEnabled else { return }
-        memoryLogger.notice("\(decorated(event), privacy: .public)")
+        guard isEnabled else { processUsage.reset(); return }
+        let usage = processUsage.sample()
+        memoryLogger.notice("\(decorated(event) + usage, privacy: .public)")
     }
 
     static var footprintMegabytes: Double? {
@@ -56,6 +58,29 @@ enum HookyDiagnostics {
     private static func decorated(_ event: String) -> String {
         guard let footprintMegabytes else { return event }
         return "\(event) footprint_mb=\(String(format: "%.2f", footprintMegabytes))"
+    }
+
+    private final class ProcessUsageSampler {
+        private let lock = NSLock()
+        private var previous: ProcessCPUReading?
+
+        func reset() {
+            lock.lock()
+            defer { lock.unlock() }
+            previous = nil
+        }
+
+        func sample() -> String {
+            var usage = rusage()
+            guard getrusage(RUSAGE_SELF, &usage) == 0 else { return "" }
+            let cpu = Double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec)
+                + Double(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1_000_000
+            let current = ProcessCPUReading(uptime: ProcessInfo.processInfo.systemUptime, cpuSeconds: cpu)
+            lock.lock()
+            defer { previous = current; lock.unlock() }
+            guard let previous, let percent = current.percent(since: previous) else { return "" }
+            return " cpu_percent=\(String(format: "%.2f", percent)) cpu_interval_s=\(String(format: "%.1f", current.uptime - previous.uptime))"
+        }
     }
 
     private final class DebugLoggingConfiguration {
@@ -103,5 +128,19 @@ enum HookyDiagnostics {
                 enabled = false
             }
         }
+    }
+}
+
+/// Like Activity Monitor: 100% means one fully occupied CPU core. Do not clamp
+/// multicore use to 100%; this is an interval average, not an instantaneous peak.
+struct ProcessCPUReading {
+    let uptime: TimeInterval
+    let cpuSeconds: TimeInterval
+
+    func percent(since previous: Self) -> Double? {
+        let elapsed = uptime - previous.uptime
+        let used = cpuSeconds - previous.cpuSeconds
+        guard elapsed > 0, used >= 0 else { return nil }
+        return used / elapsed * 100
     }
 }

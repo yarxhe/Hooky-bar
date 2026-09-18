@@ -14,7 +14,6 @@ final class ScreenshotClipboardAdapter: ClipboardSourceAdapter {
     private var didLoadInitialItems = false
     private var receive: ((ClipboardAdapterUpdate) -> Void)?
     private var watcher: DispatchSourceFileSystemObject?
-    private var directoryFileDescriptor: Int32 = -1
     private var pendingRefresh: DispatchWorkItem?
 
     func start(receive: @escaping (ClipboardAdapterUpdate) -> Void) {
@@ -119,7 +118,6 @@ final class ScreenshotClipboardAdapter: ClipboardSourceAdapter {
     private func startWatcher() {
         let descriptor = Darwin.open(screenshotFolder().path, O_EVTONLY)
         guard descriptor >= 0 else { return }
-        directoryFileDescriptor = descriptor
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
             eventMask: [.write, .extend, .attrib, .rename],
@@ -134,10 +132,10 @@ final class ScreenshotClipboardAdapter: ClipboardSourceAdapter {
             pendingRefresh = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: work)
         }
-        source.setCancelHandler { [weak self] in
-            guard let self, directoryFileDescriptor >= 0 else { return }
-            close(directoryFileDescriptor)
-            directoryFileDescriptor = -1
+        // The descriptor belongs to this source instance. Capturing it by
+        // value avoids an old cancel handler closing a newly restarted watcher.
+        source.setCancelHandler {
+            close(descriptor)
         }
         watcher = source
         source.resume()

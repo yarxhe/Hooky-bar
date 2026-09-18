@@ -1,6 +1,7 @@
 import Cocoa
 import ApplicationServices
 import SwiftUI
+import Network
 
 final class YandexCDPBridge {
     private struct Target: Decodable {
@@ -11,21 +12,32 @@ final class YandexCDPBridge {
 
     let port: UInt16
 
-    private let endpoint: URL
     private let expectedBundleIdentifier: String
     private let operationLock = NSLock()
     private let commandLock = NSLock()
     private let ownershipLock = NSLock()
+    private let discoveryLock = NSLock()
     private let targetLock = NSLock()
     private let requestIDLock = NSLock()
     private var cachedOwnerValidation: (date: Date, isValid: Bool)?
     private var cachedTarget: URL?
+    private var discoveryRetryAfter: Date?
     private var nextRequestID = 0
+    private let clock: () -> Date
+    private let ownerProbe: (() -> Bool)?
+    private let connectionFactory: (NWEndpoint, NWParameters) -> NWConnection
+    private let replyTimeout: TimeInterval
 
-    init(port: UInt16, expectedBundleIdentifier: String) {
+    init(port: UInt16, expectedBundleIdentifier: String,
+         clock: @escaping () -> Date = Date.init, ownerProbe: (() -> Bool)? = nil,
+         connectionFactory: @escaping (NWEndpoint, NWParameters) -> NWConnection = { NWConnection(to: $0, using: $1) },
+         replyTimeout: TimeInterval = 2.5) {
         self.port = port
         self.expectedBundleIdentifier = expectedBundleIdentifier
-        endpoint = URL(string: "http://127.0.0.1:\(port)/json/list")!
+        self.clock = clock
+        self.ownerProbe = ownerProbe
+        self.connectionFactory = connectionFactory
+        self.replyTimeout = replyTimeout
     }
 
     /// A high, installation-specific port avoids exposing the conventional
@@ -45,6 +57,7 @@ final class YandexCDPBridge {
         guard url.scheme?.lowercased() == "ws",
               url.host == "127.0.0.1",
               url.port == Int(port),
+              url.user == nil, url.password == nil, url.fragment == nil,
               url.path.hasPrefix("/devtools/page/") else { return false }
         return true
     }
@@ -133,7 +146,7 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression, freshConnection: true)
+        return evaluateBool(expression, freshConnection: true, retryOnFailure: false)
     }
 
     /// Starts playback without turning it back off when the launch path retries.
@@ -298,27 +311,37 @@ final class YandexCDPBridge {
           return true;
         })()
         """
-        return evaluateBool(expression, freshConnection: true)
+        return evaluateBool(expression, freshConnection: true, retryOnFailure: false)
     }
 
-    private func evaluateBool(_ expression: String, freshConnection: Bool = false) -> Bool {
-        evaluate(expression, freshConnection: freshConnection) as? Bool ?? false
+    private func evaluateBool(
+        _ expression: String,
+        freshConnection: Bool = false,
+        retryOnFailure: Bool = true
+    ) -> Bool {
+        evaluate(
+            expression,
+            freshConnection: freshConnection,
+            retryOnFailure: retryOnFailure
+        ) as? Bool ?? false
     }
 
-    private func evaluate(_ expression: String, freshConnection: Bool = false) -> Any? {
+    private func evaluate(
+        _ expression: String,
+        freshConnection: Bool = false,
+        retryOnFailure: Bool = true
+    ) -> Any? {
         let evaluationLock = freshConnection ? commandLock : operationLock
         evaluationLock.lock()
         defer { evaluationLock.unlock() }
         let evaluationStartedAt = Date()
 
         // Yandex Electron retires idle DevTools sockets after only a few seconds.
-        // A short-lived ephemeral session avoids both stale-socket latency and
-        // CFNetwork retaining completed WebSocket buffers for the app lifetime.
-        for attempt in 0..<2 {
-            guard let socketURL = targetWebSocketURL() else { return nil }
-            let transientSession = Self.makeSession()
-            let task = transientSession.webSocketTask(with: socketURL)
-            task.resume()
+        // A short-lived native connection avoids stale-socket latency and the
+        // CFNetwork retention observed in the repeated-request regression test.
+        let attemptCount = retryOnFailure ? 2 : 1
+        for attempt in 0..<attemptCount {
+            guard let socketURL = targetWebSocketURL(bypassBackoff: freshConnection) else { return nil }
             let requestID = makeRequestID()
             let request: [String: Any] = [
                 "id": requestID,
@@ -332,32 +355,25 @@ final class YandexCDPBridge {
                     "userGesture": true
                 ]
             ]
-            guard let data = try? JSONSerialization.data(withJSONObject: request),
-                  let string = String(data: data, encoding: .utf8) else { return nil }
-
-            let semaphore = DispatchSemaphore(value: 0)
-            var responseData: Data?
-            Task {
-                do {
-                    try await task.send(.string(string))
-                    let message = try await task.receive()
-                    switch message {
-                    case .string(let value): responseData = value.data(using: .utf8)
-                    case .data(let value): responseData = value
-                    @unknown default: break
-                    }
-                } catch {}
-                semaphore.signal()
+            guard let data = try? JSONSerialization.data(withJSONObject: request) else { return nil }
+            let parameters = NWParameters.tcp
+            let webSocket = NWProtocolWebSocket.Options()
+            webSocket.autoReplyPing = true
+            webSocket.maximumMessageSize = 512 * 1024
+            parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
+            let connection = connectionFactory(.url(socketURL), parameters)
+            let operation = CDPLocalRequest(connection: connection, kind: .evaluate(requestID), message: data)
+            operation.start()
+            // Always tear down the receive and connection,
+            // including successful replies and every early/timeout/error exit.
+            defer {
+                operation.stop()
             }
-            let completed = semaphore.wait(timeout: .now() + 2.5) == .success
-            if completed,
-               let responseData,
+            if let responseData = operation.reply.take(timeout: replyTimeout),
                let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
                (response["id"] as? NSNumber)?.intValue == requestID,
                let result = response["result"] as? [String: Any],
                let remote = result["result"] as? [String: Any] {
-                task.cancel(with: .normalClosure, reason: nil)
-                transientSession.finishTasksAndInvalidate()
                 if freshConnection {
                     HookyDiagnostics.bridge(
                         "event=command_response attempt=\(attempt + 1) latency_ms=\(Int(Date().timeIntervalSince(evaluationStartedAt) * 1_000))"
@@ -366,49 +382,44 @@ final class YandexCDPBridge {
                 return remote["value"]
             }
 
-            task.cancel(with: .goingAway, reason: nil)
-            transientSession.invalidateAndCancel()
             HookyDiagnostics.bridge(
                 "event=evaluate_failure mode=\(freshConnection ? "command" : "background") attempt=\(attempt + 1)",
                 isError: true
             )
             clearCachedTarget()
-            if attempt == 0 { continue }
+            if attempt + 1 < attemptCount { continue }
         }
         return nil
     }
 
-    private func targetWebSocketURL() -> URL? {
-        guard debuggerBelongsToExpectedApplication() else {
+    private func targetWebSocketURL(bypassBackoff: Bool = false) -> URL? {
+        discoveryLock.lock()
+        defer { discoveryLock.unlock() }
+        guard debuggerBelongsToExpectedApplication(bypassBackoff: bypassBackoff) else {
             clearCachedTarget()
             return nil
         }
         // The page target remains valid for the lifetime of its renderer. A
         // failed WebSocket command clears this cache and discovers a new target;
-        // polling /json/list every few seconds only accumulated CFNetwork tasks.
+        // Avoid polling /json/list on every snapshot.
         if let cachedTarget = cachedTargetURL() { return cachedTarget }
-        let discoverySession = Self.makeSession()
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: URL?
-        discoverySession.dataTask(with: endpoint) { [port] data, response, _ in
-            defer { semaphore.signal() }
-            guard let http = response as? HTTPURLResponse,
-                  http.statusCode == 200,
-                  let data,
-                  let targets = try? JSONDecoder().decode([Target].self, from: data) else { return }
-            guard let candidate = targets.first(where: {
-                $0.type == "page" && $0.url.hasPrefix("music-application://")
-            })?.webSocketDebuggerUrl,
-                  Self.isTrustedWebSocketURL(candidate, port: port) else { return }
-            result = candidate
-        }.resume()
-        let completed = semaphore.wait(timeout: .now() + 2.2) == .success
-        if completed {
-            discoverySession.finishTasksAndInvalidate()
-        } else {
-            discoverySession.invalidateAndCancel()
-        }
-        if let result { storeCachedTarget(result) }
+        targetLock.lock()
+        let canDiscover = bypassBackoff || discoveryRetryAfter.map { clock() >= $0 } != false
+        targetLock.unlock()
+        guard canDiscover else { return nil }
+        let connection = connectionFactory(.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!), .tcp)
+        let message = Data("GET /json/list HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAccept: application/json\r\nConnection: close\r\n\r\n".utf8)
+        let operation = CDPLocalRequest(connection: connection, kind: .discovery, message: message)
+        operation.start()
+        defer { operation.stop() }
+        let data = operation.reply.take(timeout: min(2.2, replyTimeout))
+        let targets = data.flatMap { try? JSONDecoder().decode([Target].self, from: $0) }
+        let candidate = targets?.first(where: { $0.type == "page" && $0.url.hasPrefix("music-application://") })?.webSocketDebuggerUrl
+        let result = candidate.flatMap { Self.isTrustedWebSocketURL($0, port: port) ? $0 : nil }
+        targetLock.lock()
+        cachedTarget = result
+        discoveryRetryAfter = result == nil ? clock().addingTimeInterval(3) : nil
+        targetLock.unlock()
         return result
     }
 
@@ -416,12 +427,6 @@ final class YandexCDPBridge {
         targetLock.lock()
         defer { targetLock.unlock() }
         return cachedTarget
-    }
-
-    private func storeCachedTarget(_ url: URL) {
-        targetLock.lock()
-        cachedTarget = url
-        targetLock.unlock()
     }
 
     private func clearCachedTarget() {
@@ -437,50 +442,35 @@ final class YandexCDPBridge {
         return nextRequestID
     }
 
-    private static func makeSession() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 2.0
-        configuration.timeoutIntervalForResource = 2.6
-        configuration.urlCache = nil
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        return URLSession(configuration: configuration)
-    }
-
     /// DevTools has no authentication. Before every short cache window, verify
     /// that the listening socket belongs to an executable inside Yandex Music.app.
-    private func debuggerBelongsToExpectedApplication() -> Bool {
+    private func debuggerBelongsToExpectedApplication(bypassBackoff: Bool) -> Bool {
         ownershipLock.lock()
         defer { ownershipLock.unlock() }
 
         if let cachedOwnerValidation,
-           cachedOwnerValidation.isValid,
-           Date().timeIntervalSince(cachedOwnerValidation.date) < 15 {
-            return true
+           clock().timeIntervalSince(cachedOwnerValidation.date) < (cachedOwnerValidation.isValid ? 15 : 3),
+           cachedOwnerValidation.isValid || !bypassBackoff {
+            return cachedOwnerValidation.isValid
         }
 
-        let valid = listenerProcessIDs().contains(where: isExpectedApplicationProcess)
-        // A failed lookup is not cached: Electron may still be starting after
-        // the first play click and must become available immediately afterwards.
-        cachedOwnerValidation = valid ? (Date(), true) : nil
+        let valid = ownerProbe?() ?? listenerProcessIDs().contains(where: isExpectedApplicationProcess)
+        // Background failures back off. Explicit commands bypass the negative
+        // cache, so a just-started player can respond immediately.
+        cachedOwnerValidation = (clock(), valid)
         return valid
     }
 
     private func listenerProcessIDs() -> [pid_t] {
         let executable = URL(fileURLWithPath: "/usr/sbin/lsof")
         guard FileManager.default.isExecutableFile(atPath: executable.path) else { return [] }
-
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = executable
-        process.arguments = ["-n", "-P", "-a", "-iTCP:\(port)", "-sTCP:LISTEN", "-Fp"]
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return [] }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return [] }
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
+        guard let result = BoundedProcess.run(
+            executable: executable,
+            arguments: ["-n", "-P", "-a", "-iTCP:\(port)", "-sTCP:LISTEN", "-Fp"],
+            timeout: 1,
+            outputLimit: 64 * 1_024
+        ), result.terminationStatus == 0,
+           let text = String(data: result.output, encoding: .utf8) else { return [] }
         return text.split(separator: "\n").compactMap { line in
             guard line.first == "p" else { return nil }
             return pid_t(line.dropFirst())
@@ -500,18 +490,13 @@ final class YandexCDPBridge {
     }
 
     private func executablePath(for pid: pid_t) -> String? {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-p", String(pid), "-o", "comm="]
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)?
+        guard let result = BoundedProcess.run(
+            executable: URL(fileURLWithPath: "/bin/ps"),
+            arguments: ["-p", String(pid), "-o", "comm="],
+            timeout: 1,
+            outputLimit: 16 * 1_024
+        ), result.terminationStatus == 0 else { return nil }
+        return String(data: result.output, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nonEmpty?
             .resolvingExecutablePath

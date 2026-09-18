@@ -23,7 +23,8 @@ struct HookySurfaceLayout: Equatable {
 extension InterfaceModel {
     /// Один источник геометрии для SwiftUI-поверхности и AppKit hit testing.
     func surfaceLayout(hasCompactContent: Bool, systemEventID: UUID?) -> HookySurfaceLayout {
-        let compactWidth = notchWidth + (hideLeftMusicWing ? 56 : 112)
+        let compactWidth = notchWidth + compactLeadingWingWidth + compactTrailingWingWidth
+        let compactOffset = (compactTrailingWingWidth - compactLeadingWingWidth) / 2
 
         if showScreenshotSuccess {
             return HookySurfaceLayout(
@@ -62,7 +63,7 @@ extension InterfaceModel {
                 mode: .systemEvent(systemEventID),
                 width: compactWidth,
                 height: notchHeight + 52,
-                horizontalOffset: hideLeftMusicWing ? 28 : 0,
+                horizontalOffset: compactOffset,
                 bottomLeadingRadius: 18,
                 bottomTrailingRadius: 18
             )
@@ -73,7 +74,7 @@ extension InterfaceModel {
                 mode: .compact,
                 width: compactWidth,
                 height: notchHeight,
-                horizontalOffset: hideLeftMusicWing ? 28 : 0,
+                horizontalOffset: compactOffset,
                 bottomLeadingRadius: 9,
                 bottomTrailingRadius: 9
             )

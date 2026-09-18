@@ -14,6 +14,7 @@ final class ToolsStore: ObservableObject {
 
     private var caffeinateProcess: Process?
     private var workspaceRefreshGeneration = 0
+    private var developerRefreshGate = DeveloperRefreshGate()
     private var adapters: [any ToolActionAdapter]
     private let developerAdapter: DeveloperToolAdapter
     private let githubAdapter: GitHubToolAdapter
@@ -141,7 +142,18 @@ final class ToolsStore: ObservableObject {
     }
 
     func refreshDeveloperWorkspace() {
+        refreshDeveloperWorkspace(force: true)
+    }
+
+    func refreshDeveloperWorkspaceIfNeeded() {
+        refreshDeveloperWorkspace(force: false)
+    }
+
+    private func refreshDeveloperWorkspace(force: Bool) {
         guard developerModeEnabled else { return }
+        let path = developerAdapter.workspaceURL?.path ?? ""
+        guard let token = developerRefreshGate.begin(path: path, force: force,
+                                                     now: ProcessInfo.processInfo.systemUptime) else { return }
         workspaceRefreshGeneration &+= 1
         let generation = workspaceRefreshGeneration
         status = L10n.tr("tools.refreshing")
@@ -150,6 +162,7 @@ final class ToolsStore: ObservableObject {
             let workspaceChanged = self.workspace.path != snapshot.path
             self.workspace = snapshot
             guard let workspaceURL = self.developerAdapter.workspaceURL else {
+                self.developerRefreshGate.finish(token)
                 self.githubAdapter.clear()
                 self.developerCI = DeveloperCISnapshot()
                 self.developerCommand = DeveloperCommandSnapshot()
@@ -168,14 +181,12 @@ final class ToolsStore: ObservableObject {
                 self.developerCommand.state = previous.state
                 self.developerCommand.output = previous.output
             }
-            self.githubAdapter.inspectWorkspace(at: workspaceURL) { [weak self] ciSnapshot in
+            self.githubAdapter.inspectAll(at: workspaceURL) { [weak self] ciSnapshot, activity in
+                defer { self?.developerRefreshGate.finish(token) }
                 guard let self, self.workspaceRefreshGeneration == generation else { return }
                 self.developerCI = ciSnapshot
-                self.status = nil
-            }
-            self.githubAdapter.inspectActivity(at: workspaceURL) { [weak self] activity in
-                guard let self, self.workspaceRefreshGeneration == generation else { return }
                 self.developerGitHubActivity = activity
+                self.status = nil
             }
         }
     }

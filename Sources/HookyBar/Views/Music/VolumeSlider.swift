@@ -45,7 +45,7 @@ struct ElasticVolumeSlider: View {
                 )
                 .contentShape(Rectangle())
                 .onHover { inside in
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.76)) { interaction.hovering = inside }
+                    withAnimation(.smooth(duration: 0.16)) { interaction.hovering = inside }
                 }
                 .gesture(
                     DragGesture(minimumDistance: 0, coordinateSpace: .local)
@@ -67,13 +67,13 @@ struct ElasticVolumeSlider: View {
                         }
                         .onEnded { _ in
                             interaction.dragValue = nil
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) {
+                            withAnimation(.smooth(duration: 0.22)) {
                                 interaction.overflow = 0
                                 interaction.region = 0
                             }
                         }
                 )
-                .animation(.spring(response: 0.24, dampingFraction: 0.78), value: trackHeight)
+                .animation(.smooth(duration: 0.18), value: trackHeight)
             }
             .frame(height: 24)
 

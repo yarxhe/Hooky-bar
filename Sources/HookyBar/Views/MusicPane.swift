@@ -54,9 +54,8 @@ struct MusicPane: View {
                             Image(systemName: store.nowPlaying.isPlaying ? "pause.fill" : "play.fill")
                                 .font(.system(size: 25, weight: .bold))
                                 .frame(width: 60, height: 46)
-                                .hookyGlass(
-                                    cornerRadius: 15,
-                                    interactive: true
+                                .hookyMaterial(
+                                    cornerRadius: 15
                                 )
                                 .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                                 .contentTransition(.symbolEffect(.replace.downUp))
@@ -74,7 +73,7 @@ struct MusicPane: View {
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundStyle(store.nowPlaying.isDisliked ? Color.red.opacity(0.9) : Color.white.opacity(0.65))
                                     .frame(width: 44, height: 42)
-                                    .hookyGlass(cornerRadius: 13, interactive: true)
+                                    .hookyMaterial(cornerRadius: 13)
                                     .contentTransition(.symbolEffect(.replace))
                             }
                             .buttonStyle(SpringPressButtonStyle.music)
@@ -90,12 +89,11 @@ struct MusicPane: View {
                                     radius: store.nowPlaying.isLiked ? 7 : 0
                                 )
                                 .frame(width: 44, height: 42)
-                                .hookyGlass(
-                                    cornerRadius: 13,
-                                    interactive: true
+                                .hookyMaterial(
+                                    cornerRadius: 13
                                 )
                                 .contentTransition(.symbolEffect(.replace))
-                                .animation(.spring(response: 0.3, dampingFraction: 0.58), value: store.nowPlaying.isLiked)
+                                .animation(reduceMotion ? nil : .snappy(duration: 0.20), value: store.nowPlaying.isLiked)
                         }
                         .buttonStyle(SpringPressButtonStyle.music)
                         .help(L10n.tr("music.like"))
@@ -134,7 +132,7 @@ struct SpringPressButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? pressedScale : 1)
             .opacity(configuration.isPressed ? pressedOpacity : 1)
-            .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: dampingFraction), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.16), value: configuration.isPressed)
     }
 }
 
@@ -150,7 +148,7 @@ struct AnimatedControlButton: View {
             Image(systemName: icon)
                 .font(.system(size: size, weight: .semibold))
                 .frame(width: 56, height: 44)
-                .hookyGlass(cornerRadius: 14, interactive: true)
+                .hookyMaterial(cornerRadius: 14)
                 .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(SpringPressButtonStyle.music)

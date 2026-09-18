@@ -16,7 +16,7 @@ STAGED_APP="$STAGING_DIR/Hooky bar.app"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 
 cd "$PROJECT_DIR"
-swift build -c release
+swift build -c release --product HookyBar
 PRODUCTS_DIR="$(swift build -c release --show-bin-path)"
 
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"

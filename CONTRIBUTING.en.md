@@ -63,6 +63,7 @@ More details:
 - [Architecture](Documentation/Architecture.en.md);
 - [Internal adapters](Documentation/Adapters.en.md);
 - [Permissions](Documentation/Permissions.en.md);
+- [Beta readiness](Documentation/Beta-Readiness.en.md);
 - [SDK plan](Documentation/SDK-Plan.en.md).
 
 ## Dependency rule

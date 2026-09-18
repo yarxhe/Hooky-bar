@@ -219,7 +219,6 @@ struct SettingsPane: View {
         }
         .frame(width: 430, height: 520, alignment: .topLeading)
         .environment(\.locale, localization.locale)
-        .onAppear(perform: diagnostics.refresh)
     }
 
     private func settingsHeader(_ title: String, _ subtitle: String) -> some View {

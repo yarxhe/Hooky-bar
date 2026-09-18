@@ -29,8 +29,10 @@ struct ClipboardScrollObserver: NSViewRepresentable {
     final class Coordinator {
         var onOffsetChange: (CGFloat) -> Void
         weak var scrollView: NSScrollView?
-        private var scrollMonitor: Any?
+        private var boundsObserver: NSObjectProtocol?
         private var initialOffset: CGFloat?
+        private var callbackPending = false
+        private var attachmentGeneration = 0
 
         init(onOffsetChange: @escaping (CGFloat) -> Void) {
             self.onOffsetChange = onOffsetChange
@@ -45,27 +47,36 @@ struct ClipboardScrollObserver: NSViewRepresentable {
             guard let scrollView = ancestor as? NSScrollView else { return }
             self.scrollView = scrollView
             let clipView = scrollView.contentView
+            clipView.postsBoundsChangedNotifications = true
             initialOffset = clipView.bounds.origin.y
-            scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) {
-                [weak self, weak scrollView] event in
-                guard let self, let scrollView, event.window === scrollView.window else { return event }
-                let point = scrollView.convert(event.locationInWindow, from: nil)
-                guard scrollView.bounds.contains(point) else { return event }
+            let generation = attachmentGeneration
+            boundsObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: clipView,
+                queue: .main
+            ) { [weak self, weak scrollView] _ in
+                guard let self, scrollView != nil, !callbackPending else { return }
+                callbackPending = true
                 DispatchQueue.main.async { [weak self, weak scrollView] in
-                    guard let self, let scrollView else { return }
+                    guard let self else { return }
+                    callbackPending = false
+                    guard attachmentGeneration == generation, let scrollView else { return }
                     let currentOffset = scrollView.contentView.bounds.origin.y
                     let baseline = initialOffset ?? currentOffset
                     onOffsetChange(max(0, currentOffset - baseline))
                 }
-                return event
             }
         }
 
         func detach() {
-            if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
-            scrollMonitor = nil
+            attachmentGeneration &+= 1
+            if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
+            boundsObserver = nil
+            callbackPending = false
             scrollView = nil
             initialOffset = nil
         }
+
+        deinit { detach() }
     }
 }

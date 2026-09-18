@@ -38,6 +38,8 @@ final class SystemFeatureStore: ObservableObject {
     var pomodoroTimer: Timer?
     var pomodoroEndDate: Date?
     private var eventAdapters: [HookySystemEvent.Kind: any SystemEventAdapter] = [:]
+    private var adapterGenerations: [HookySystemEvent.Kind: Int] = [:]
+    private var startedAdapters: Set<HookySystemEvent.Kind> = []
 
     init() {
         let defaults = UserDefaults.standard
@@ -78,7 +80,11 @@ final class SystemFeatureStore: ObservableObject {
     func stop() {
         eventDismissal?.cancel()
         pomodoroTimer?.invalidate()
-        eventAdapters.values.forEach { $0.stop() }
+        eventAdapters.forEach { kind, adapter in
+            adapterGenerations[kind, default: 0] &+= 1
+            adapter.stop()
+        }
+        startedAdapters.removeAll()
     }
 
     func setBluetoothEnabled(_ enabled: Bool) {
@@ -106,8 +112,11 @@ final class SystemFeatureStore: ObservableObject {
     }
 
     func register(_ adapter: any SystemEventAdapter) {
+        let wasStarted = startedAdapters.remove(adapter.kind) != nil
+        adapterGenerations[adapter.kind, default: 0] &+= 1
         eventAdapters[adapter.kind]?.stop()
         eventAdapters[adapter.kind] = adapter
+        if wasStarted { startAdapter(adapter.kind) }
     }
 
     var systemCapabilities: [IntegrationCapabilityDeclaration] {
@@ -115,12 +124,38 @@ final class SystemFeatureStore: ObservableObject {
     }
 
     private func setAdapter(_ kind: HookySystemEvent.Kind, enabled: Bool) {
-        enabled ? startAdapter(kind) : eventAdapters[kind]?.stop()
+        if enabled {
+            startAdapter(kind)
+        } else {
+            adapterGenerations[kind, default: 0] &+= 1
+            startedAdapters.remove(kind)
+            eventAdapters[kind]?.stop()
+            eventQueue.removeAll { $0.kind == kind }
+        }
     }
 
     private func startAdapter(_ kind: HookySystemEvent.Kind) {
+        guard !startedAdapters.contains(kind) else { return }
+        startedAdapters.insert(kind)
+        adapterGenerations[kind, default: 0] &+= 1
+        let generation = adapterGenerations[kind, default: 0]
         eventAdapters[kind]?.start { [weak self] event in
-            DispatchQueue.main.async { self?.enqueue(event) }
+            DispatchQueue.main.async {
+                guard let self,
+                      self.adapterGenerations[kind] == generation,
+                      self.featureIsEnabled(kind) else { return }
+                self.enqueue(event)
+            }
+        }
+    }
+
+    private func featureIsEnabled(_ kind: HookySystemEvent.Kind) -> Bool {
+        switch kind {
+        case .bluetooth: bluetoothEnabled
+        case .vpn: vpnEnabled
+        case .calendar: calendarEnabled
+        case .airDrop: airDropEnabled
+        case .pomodoro: true
         }
     }
 
@@ -135,6 +170,8 @@ final class SystemFeatureStore: ObservableObject {
 
     func pausePomodoro() {
         updatePomodoroTime()
+        pomodoroTimer?.invalidate()
+        pomodoroTimer = nil
         pomodoroEndDate = nil
         pomodoroRunning = false
     }

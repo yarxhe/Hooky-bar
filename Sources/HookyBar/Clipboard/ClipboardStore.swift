@@ -10,8 +10,13 @@ final class ClipboardStore: ObservableObject {
 
     private var adapters: [ClipboardSourceAdapter]
     private var itemsBySource: [String: [ClipboardItem]] = [:]
-    private var hiddenIDs: Set<String> = []
+    // Tombstones only bridge the gap until a source confirms that a removed
+    // item disappeared. Keeping every removed UUID forever grows memory and
+    // prevents a later item with the same stable ID (for example a screenshot
+    // recreated at the same path) from appearing again.
+    private var hiddenIDsBySource: [String: Set<String>] = [:]
     private var isMonitoring = false
+    private var monitoringGeneration = 0
     private var cleanupTimer: Timer?
     private let retentionPolicy: ClipboardRetentionPolicy
     private let pinnedDefaultsKey = "HookyBar.clipboard.pinnedIDs"
@@ -38,6 +43,7 @@ final class ClipboardStore: ObservableObject {
     func startMonitoring() {
         guard !isMonitoring else { return }
         isMonitoring = true
+        monitoringGeneration &+= 1
         for adapter in adapters {
             start(adapter)
         }
@@ -51,10 +57,11 @@ final class ClipboardStore: ObservableObject {
     }
 
     func stopMonitoring() {
+        monitoringGeneration &+= 1
+        isMonitoring = false
         adapters.forEach { $0.stop() }
         cleanupTimer?.invalidate()
         cleanupTimer = nil
-        isMonitoring = false
     }
 
     /// Позволяет SDK зарегистрировать новый источник до запуска или прямо во время работы.
@@ -110,6 +117,15 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func accept(_ update: ClipboardAdapterUpdate) {
+        if var hidden = hiddenIDsBySource[update.sourceID] {
+            let reportedIDs = Set(update.items.map(\.id))
+            hidden.formIntersection(reportedIDs)
+            if hidden.isEmpty {
+                hiddenIDsBySource.removeValue(forKey: update.sourceID)
+            } else {
+                hiddenIDsBySource[update.sourceID] = hidden
+            }
+        }
         itemsBySource[update.sourceID] = update.items
         pruneHistory(referenceDate: Date())
         rebuildItems()
@@ -119,12 +135,19 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func start(_ adapter: ClipboardSourceAdapter) {
+        let generation = monitoringGeneration
         adapter.start { [weak self] update in
-            DispatchQueue.main.async { self?.accept(update) }
+            DispatchQueue.main.async {
+                guard let self,
+                      self.isMonitoring,
+                      self.monitoringGeneration == generation else { return }
+                self.accept(update)
+            }
         }
     }
 
     private func rebuildItems() {
+        let hiddenIDs = allHiddenIDs
         items = itemsBySource.values
             .flatMap { $0 }
             .filter { !hiddenIDs.contains($0.id) }
@@ -132,6 +155,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func pruneHistory(referenceDate: Date) {
+        let hiddenIDs = allHiddenIDs
         let visibleItems = itemsBySource.values
             .flatMap { $0 }
             .filter { !hiddenIDs.contains($0.id) }
@@ -142,13 +166,19 @@ final class ClipboardStore: ObservableObject {
         ))
     }
 
+    private var allHiddenIDs: Set<String> {
+        hiddenIDsBySource.values.reduce(into: Set<String>()) {
+            $0.formUnion($1)
+        }
+    }
+
     private func removeItems<S: Sequence>(_ removedItems: S) where S.Element == ClipboardItem {
         let removed = Array(removedItems)
         guard !removed.isEmpty else { return }
 
         let removedIDs = Set(removed.map(\.id))
-        hiddenIDs.formUnion(removedIDs)
         for (sourceID, sourceItems) in Dictionary(grouping: removed, by: \.sourceID) {
+            hiddenIDsBySource[sourceID, default: []].formUnion(sourceItems.map(\.id))
             itemsBySource[sourceID]?.removeAll { removedIDs.contains($0.id) }
             _ = adapters.first(where: { $0.id == sourceID })?.remove(sourceItems)
         }

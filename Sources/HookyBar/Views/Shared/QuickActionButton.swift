@@ -15,7 +15,11 @@ struct QuickActionButton: View {
     @StateObject private var interaction = QuickActionInteraction()
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            HookyDiagnostics.control("action=quick_action phase=request id=\(symbol)")
+            action()
+            HookyDiagnostics.control("action=quick_action phase=dispatched id=\(symbol)")
+        } label: {
             VStack(spacing: 8) {
                 Image(systemName: symbol)
                     .font(.system(size: 15, weight: .medium))
@@ -29,7 +33,10 @@ struct QuickActionButton: View {
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity)
             .frame(height: 56)
-            .hookyGlass(cornerRadius: 12, interactive: true)
+            // Scrolling several independent blur layers is expensive in AppKit.
+            // The panel already owns the dark material; cards only need a
+            // lightweight translucent fill above it.
+            .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(.white.opacity(interaction.hovering && isEnabled ? 0.2 : 0), lineWidth: 1)

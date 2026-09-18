@@ -73,7 +73,7 @@ struct ToolsPane: View {
             }
         }
         .padding(12)
-        .hookyGlass(cornerRadius: 16)
+        .hookyMaterial(cornerRadius: 16)
     }
 
     private var quickActions: some View {

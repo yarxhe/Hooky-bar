@@ -72,7 +72,7 @@ struct TrackProgressSlider: View {
             }
             .contentShape(Rectangle())
             .onHover { inside in
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
+                withAnimation(.smooth(duration: 0.16)) {
                     interaction.hovering = inside
                 }
             }

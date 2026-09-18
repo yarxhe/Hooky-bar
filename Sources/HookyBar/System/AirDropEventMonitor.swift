@@ -10,7 +10,6 @@ final class AirDropEventAdapter: SystemEventAdapter {
 
     private var receive: ((HookySystemEvent) -> Void)?
     private var watcher: DispatchSourceFileSystemObject?
-    private var directoryFileDescriptor: Int32 = -1
     private var knownFiles = Set<URL>()
     private var pendingRefresh: DispatchWorkItem?
 
@@ -19,18 +18,16 @@ final class AirDropEventAdapter: SystemEventAdapter {
         guard watcher == nil,
               let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
         knownFiles = currentFiles(in: downloads)
-        directoryFileDescriptor = open(downloads.path, O_EVTONLY)
-        guard directoryFileDescriptor >= 0 else { return }
+        let descriptor = open(downloads.path, O_EVTONLY)
+        guard descriptor >= 0 else { return }
         let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: directoryFileDescriptor,
+            fileDescriptor: descriptor,
             eventMask: [.write, .rename],
             queue: .main
         )
         source.setEventHandler { [weak self] in self?.scheduleRefresh(directory: downloads) }
-        source.setCancelHandler { [weak self] in
-            guard let self, self.directoryFileDescriptor >= 0 else { return }
-            close(self.directoryFileDescriptor)
-            self.directoryFileDescriptor = -1
+        source.setCancelHandler {
+            close(descriptor)
         }
         watcher = source
         source.resume()

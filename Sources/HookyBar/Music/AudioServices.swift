@@ -255,4 +255,19 @@ final class AudioSpectrumSignal: @unchecked Sendable {
         lock.unlock()
         return result
     }
+
+    /// Лёгкая резервная анимация для случая, когда пользователь сознательно
+    /// отключил системный audio tap. Она не читает аудио и детерминирована по
+    /// времени, поэтому не требует таймера или фоновой очереди.
+    static func simulatedBands(at date: Date = Date()) -> [CGFloat] {
+        let time = date.timeIntervalSinceReferenceDate
+        let beat = pow(max(0, sin(time * 2.7)), 3)
+        return (0..<12).map { index in
+            let phase = Double(index) * 0.71
+            let primary = (sin(time * 5.2 + phase) + 1) / 2
+            let detail = (sin(time * 11.3 + Double(index) * 1.37) + 1) / 2
+            let accent = index.isMultiple(of: 3) ? beat * 0.22 : beat * 0.10
+            return min(0.92, max(0.08, 0.10 + primary * 0.42 + detail * 0.16 + accent))
+        }
+    }
 }

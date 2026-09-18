@@ -63,6 +63,7 @@ Sources/HookyBar/
 - [Архитектура](Documentation/Architecture.md);
 - [Внутренние адаптеры](Documentation/Adapters.md);
 - [Разрешения](Documentation/Permissions.md);
+- [Готовность к выходу из беты](Documentation/Beta-Readiness.md);
 - [План SDK](Documentation/SDK-Plan.md).
 
 ## Правило зависимостей
